@@ -1,7 +1,217 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-  </head>
-  <body>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>席替え</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+
+  <!-- Zen Kurenaido -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Kurenaido&display=swap" rel="stylesheet">
+
+  <!-- PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <!-- Excel出力 -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/file-saver/dist/FileSaver.min.js"></script>
+
+</head>
+
+<body>
+  <div class="main">
+    <h1>席替え</h1>
+
+    <!-- 名簿 -->
+    <div class="section">
+
+      <h3>名簿</h3>
+
+      <p>
+        名前を1行に1人ずつ入力<br>
+        出席番号は入力順になります
+      </p>
+
+      <textarea id="nameInput" placeholder="山田太郎
+佐藤花子
+鈴木一郎"></textarea>
+
+    </div>
+
+    <!-- 読みがな -->
+    <div class="section">
+
+      <h3>読みがな</h3>
+
+      <p>
+        名簿と同じ順番で入力
+      </p>
+
+      <textarea id="furiganaInput" placeholder="やまだたろう
+さとうはなこ
+すずきいちろう"></textarea>
+
+    </div>
+
+    <!-- 前席 -->
+    <div class="section">
+
+      <h3>前の席にしたい人</h3>
+
+      <p>
+        名前を1行に1人ずつ入力
+      </p>
+
+      <textarea id="frontInput" placeholder="山田太郎
+佐藤花子"></textarea>
+
+    </div>
+
+    <!-- タイトル -->
+    <div class="section">
+
+      <h3>タイトル</h3>
+
+      <input
+        type="text"
+        id="sheetTitle"
+        placeholder="例：3年1組 座席表"
+      >
+
+    </div>
+
+    <!-- PDFサイズ -->
+    <div class="section">
+
+      <h3>PDFサイズ</h3>
+
+      <select id="pdfSize">
+
+        <option value="a3">A3</option>
+        <option value="a4" selected>A4</option>
+        <option value="a5">A5</option>
+        <option value="b4">B4</option>
+        <option value="b5">B5</option>
+        <option value="letter">Letter</option>
+
+      </select>
+
+    </div>
+
+    <!-- 座席配置 -->
+    <div class="section">
+
+      <h3>座席配置</h3>
+
+      <p>
+        縦列ごとの席数を入力<br>
+        （例：5,7,7,7,7,7,5）
+      </p>
+
+      <input
+        type="text"
+        id="layoutInput"
+        value="5,7,7,7,7,7,5"
+        placeholder="5,7,7,7,7,7,5"
+      >
+
+    </div>
+
+    <!-- 空白位置 -->
+    <div class="section">
+
+      <h3>空白位置</h3>
+
+      <select id="alignType">
+
+        <option value="top">
+          上寄せ
+        </option>
+
+        <option value="center" selected>
+          中央寄せ
+        </option>
+
+        <option value="bottom">
+          下寄せ
+        </option>
+
+      </select>
+
+    </div>
+
+    <button onclick="makeSeats()">
+      席替えする
+    </button>
+
+    <br>
+
+    <button onclick="savePDF()">
+      PDF保存
+    </button>
+
+    <br>
+
+    <button onclick="saveExcel()">
+      Excel保存
+    </button>
+
+    <br>
+
+    <button onclick="saveGoogleSheet()">
+      Googleスプレッドシート保存
+    </button>
+    <p>※ページ移動後、「コピーを作成」ボタンを押してください</p>
+
+    <div class="note">
+      教卓側が前になります
+    </div>
+
+    <!-- PDF範囲 -->
+    <div id="pdfTarget">
+
+      <h2 id="displayTitle"></h2>
+
+      <div id="seatArea"></div>
+
+    </div>
+
+    <script src="main.js"></script>
+
+
+    <!-- ローディング -->
+    <div id="loadingOverlay">
+
+      <div class="loaderBox">
+
+        <div class="spinner"></div>
+
+        <div class="loadingText">
+          Googleスプレッドシート保存中...
+        </div>
+
+        <button
+          id="cancelLoadingBtn"
+          onclick="cancelGoogleSave()"
+        >
+          キャンセル
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <footer>
+    <div class="copy">© 2026 TEAM-Minimal</div>
+  </footer>
+
+</body>
 </html>

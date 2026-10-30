@@ -1,0 +1,365 @@
+body{
+  margin:0;
+  padding:0;
+  background:white;
+
+  text-align:center;
+
+  font-family:'Zen Kurenaido', sans-serif;
+}
+
+.main{
+  padding:20px;
+}
+
+h1{
+  margin-bottom:10px;
+}
+
+.section{
+  margin-top:30px;
+}
+
+textarea{
+
+  width:90%;
+  max-width:650px;
+
+  height:170px;
+
+  padding:10px;
+
+  border:1px solid #999;
+  border-radius:10px;
+
+  resize:vertical;
+
+  box-sizing:border-box;
+
+  font-size:15px;
+
+  font-family:'Zen Kurenaido', sans-serif;
+}
+
+input,
+select{
+
+  width:90%;
+  max-width:500px;
+
+  padding:10px;
+
+  border:1px solid #999;
+  border-radius:10px;
+
+  box-sizing:border-box;
+
+  font-size:18px;
+
+  font-family:'Zen Kurenaido', sans-serif;
+}
+
+button{
+
+  margin-top:25px;
+
+  padding:12px 24px;
+
+  border:none;
+  border-radius:10px;
+
+  background:#333;
+  color:white;
+
+  font-size:18px;
+
+  cursor:pointer;
+
+  font-family:'Zen Kurenaido', sans-serif;
+}
+
+button:hover{
+  background:#111;
+}
+
+.note{
+  margin-top:12px;
+  line-height:1.7;
+  color:#444;
+}
+
+/* ===== PDF範囲 ===== */
+
+#pdfTarget{
+
+  display:flex;
+  flex-direction:column;
+
+  align-items:center;
+
+  background:white;
+
+  padding:20px;
+}
+
+#displayTitle{
+
+  margin-top:40px;
+  margin-bottom:20px;
+
+  font-size:36px;
+  font-weight:normal;
+
+  text-decoration:underline;
+}
+
+/* ===== 座席表 ===== */
+
+#seatArea{
+
+  margin-top:10px;
+
+  display:flex;
+  flex-direction:column;
+
+  align-items:center;
+
+  gap:18px;
+}
+
+.row{
+
+  display:flex;
+
+  justify-content:center;
+
+  gap:22px;
+}
+
+.seat{
+
+  width:150px;
+  height:82px;
+
+  background:white;
+
+  border:1.5px solid #222;
+
+  box-sizing:border-box;
+
+  overflow:hidden;
+
+  display:grid;
+
+  grid-template-rows:
+    18px
+    1fr;
+}
+
+/* 前席 */
+.frontSeat{
+  background:#fafafa;
+}
+
+/* 読みがな */
+.furigana{
+
+  font-size:12px;
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  border-bottom:1px solid #222;
+
+  white-space:nowrap;
+
+  overflow:hidden;
+
+  padding:0 4px;
+}
+
+/* 下段 */
+.nameRow{
+
+  display:grid;
+
+  grid-template-columns:
+    28px
+    1fr;
+
+  height:100%;
+}
+
+/* 出席番号 */
+.number{
+
+  font-size:16px;
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  border-right:1px solid #222;
+}
+
+/* 名前 */
+.name{
+
+  font-size:20px;
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  overflow:hidden;
+}
+
+/* 教卓 */
+.teacher{
+
+  width:120px;
+  height:55px;
+
+  border:1.8px solid #222;
+
+  background:white;
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  font-size:32px;
+
+  margin-top:10px;
+}
+
+/* ===== ローディング ===== */
+
+#loadingOverlay{
+
+  position:fixed;
+
+  inset:0;
+
+  background:rgba(255,255,255,0.85);
+
+  display:none;
+
+  align-items:center;
+  justify-content:center;
+
+  z-index:9999;
+}
+
+.loaderBox{
+
+  display:flex;
+  flex-direction:column;
+
+  align-items:center;
+
+  gap:18px;
+}
+
+.spinner{
+
+  width:70px;
+  height:70px;
+
+  border:8px solid #ddd;
+
+  border-top:8px solid #333;
+
+  border-radius:50%;
+
+  animation:spin 1s linear infinite;
+}
+
+.loadingText{
+
+  font-size:22px;
+
+  color:#333;
+}
+
+#cancelLoadingBtn{
+
+  margin-top:8px;
+
+  padding:10px 22px;
+
+  border:none;
+  border-radius:10px;
+
+  background:#888;
+
+  color:white;
+
+  font-size:16px;
+
+  cursor:pointer;
+
+  font-family:'Zen Kurenaido', sans-serif;
+}
+
+#cancelLoadingBtn:hover{
+  background:#666;
+}
+
+footer{
+  margin:0;
+  padding:16px 0;
+  background:#000;
+  color:#fff;
+  width:100%;
+  box-sizing:border-box;
+}
+
+.copy{
+  margin:0;
+  font-size:15px;
+  opacity:0.8;
+}
+
+@keyframes spin{
+
+  from{
+    transform:rotate(0deg);
+  }
+
+  to{
+    transform:rotate(360deg);
+  }
+}
+
+/* スマホ */
+
+@media(max-width:900px){
+
+  .row{
+    gap:10px;
+  }
+
+  .seat{
+
+    width:92px;
+    height:66px;
+  }
+
+  .furigana{
+    font-size:8px;
+  }
+
+  .number{
+    font-size:12px;
+  }
+
+  .name{
+    font-size:16px;
+  }
+}
