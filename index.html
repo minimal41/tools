@@ -102,18 +102,22 @@
   .footer-inner {
     max-width: 760px;
     margin: 0 auto;
-    padding: 22px 20px;
+    padding: 16px 20px;
     display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 6px 24px;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    text-align: center;
     font-size: 12px;
+    line-height: 1.5;
     color: var(--faint);
   }
 
+  /* 大きさ・位置は席替えページ（change-seats）と同じ：中央・15px */
   .copyright {
-    color: var(--sub);
+    font-size: 15px;
+    color: var(--ink);
+    opacity: 0.8;
     letter-spacing: 0.02em;
   }
 
