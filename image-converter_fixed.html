@@ -1,0 +1,3972 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convrt｜画像・PDF・EPUB の変換</title>
+<style>
+  /* UI: Zen Kaku Gothic New / Shippori Mincho、EPUB の描画用: Noto Sans JP / Noto Serif JP */
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&display=swap');
+
+  :root {
+    --bg: #ffffff;
+    --paper: #f7f6f3;
+    --ink: #1d1d1b;
+    --sub: #6e6c67;
+    --faint: #9c9a94;
+    --line: #e7e5e0;
+    --line-strong: #d6d3cc;
+    --accent: #c8462c;        /* 朱 */
+    --accent-soft: #fbf1ee;
+    --ok: #2f6b4f;
+    --radius: 10px;
+    --serif: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+    --sans: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, select, input { font: inherit; color: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 20px 96px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    padding: 40px 0 28px;
+  }
+
+  .wordmark {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .tagline {
+    font-size: 13px;
+    color: var(--faint);
+  }
+
+  /* Drop Zone */
+  #dropzone {
+    border: 1.5px dashed var(--line-strong);
+    border-radius: 14px;
+    background: var(--bg);
+    padding: 52px 24px 44px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+
+  #dropzone:hover, #dropzone.dragover, #dropzone:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .drop-icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 18px;
+    color: var(--faint);
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  #dropzone:hover .drop-icon, #dropzone.dragover .drop-icon {
+    color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .drop-title {
+    font-family: var(--serif);
+    font-size: 19px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .drop-sub {
+    font-size: 14px;
+    color: var(--sub);
+  }
+
+  .drop-sub u {
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+  }
+
+  .drop-formats {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--faint);
+    letter-spacing: 0.02em;
+  }
+
+  #fileInput { display: none; }
+
+  /* Sections */
+  #previewArea {
+    margin-top: 40px;
+    display: none;
+  }
+
+  .section-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  /* File rows */
+  #fileList {
+    display: grid;
+  }
+
+  .file-card {
+    display: grid;
+    grid-template-columns: 52px 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .thumb-wrap {
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .thumb-wrap img,
+  .thumb-wrap canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* PDF / EPUB などサムネイルが無いものは形式名を表示 */
+  .thumb-wrap .pdf-icon {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+  }
+
+  .file-info { min-width: 0; }
+
+  .file-name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-meta {
+    font-size: 12px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .format-select-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .format-label {
+    font-size: 12px;
+    color: var(--sub);
+    white-space: nowrap;
+  }
+
+  select.fmt-sel {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 30px 6px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236e6c67' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+  }
+
+  select.fmt-sel:hover { border-color: var(--ink); }
+
+  .remove-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--faint);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .remove-btn:hover { background: var(--paper); color: var(--ink); }
+  .remove-btn svg { width: 14px; height: 14px; }
+
+  /* MP3 タグ編集 */
+  .tag-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s;
+  }
+
+  .tag-toggle:hover { border-color: var(--ink); }
+  .tag-toggle[hidden] { display: none; }
+  .tag-toggle svg { width: 10px; height: 6px; transition: transform 0.15s; }
+  .tag-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+  .tag-panel {
+    grid-column: 1 / -1;
+    margin: 4px 0 6px;
+    padding: 18px;
+    border-radius: var(--radius);
+    background: var(--paper);
+  }
+
+  .tag-panel[hidden] { display: none; }
+
+  .tag-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px 14px;
+  }
+
+  .tag-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; grid-column: span 2; }
+  .tag-field.wide { grid-column: 1 / -1; }
+  .tag-field.narrow { grid-column: span 1; }
+
+  .tag-field label {
+    font-size: 12px;
+    color: var(--sub);
+  }
+
+  .tag-field input {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--bg);
+    transition: border-color 0.15s;
+  }
+
+  .tag-field input:focus { outline: none; border-color: var(--ink); }
+
+  .cover-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 16px;
+  }
+
+  .cover-preview {
+    width: 72px;
+    height: 72px;
+    flex: none;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--faint);
+  }
+
+  .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+  .cover-label { font-size: 12px; color: var(--sub); margin-bottom: 2px; }
+  .cover-btns { display: flex; gap: 16px; }
+
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .link-btn:hover { text-decoration-color: var(--ink); }
+  .tag-actions .link-btn { text-align: left; white-space: normal; }
+  .link-btn[hidden] { display: none; }
+
+  .tag-actions {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* Controls */
+  .controls {
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 24px;
+    flex-wrap: wrap;
+  }
+
+  .settings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 28px;
+  }
+
+  .quality-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .quality-wrap[hidden] { display: none; }
+
+  .quality-label {
+    font-size: 13px;
+    color: var(--sub);
+    white-space: nowrap;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 128px;
+    height: 20px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--line-strong);
+    border-radius: 2px;
+  }
+
+  input[type=range]::-moz-range-track {
+    height: 2px;
+    background: var(--line-strong);
+    border-radius: 2px;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -7px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1.5px solid var(--ink);
+  }
+
+  input[type=range]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1.5px solid var(--ink);
+  }
+
+  #qualityVal {
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 24px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .quality-hint {
+    font-size: 12px;
+    color: var(--faint);
+    margin-top: 14px;
+    line-height: 1.7;
+  }
+
+  .btn-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto; /* 折り返しても右端にそろえる */
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 11px 22px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: #000; }
+
+  .btn-primary .arrow { transition: transform 0.15s; }
+  .btn-primary:hover .arrow { transform: translateX(2px); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--sub);
+  }
+
+  .btn-ghost:hover { color: var(--ink); background: var(--paper); }
+
+  .btn-outline {
+    background: var(--bg);
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+
+  .btn-outline:hover { border-color: var(--ink); }
+
+  .btn:disabled,
+  .btn:disabled:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Progress / Status */
+  #statusArea {
+    margin-top: 28px;
+    display: none;
+  }
+
+  .status-bar-wrap {
+    background: var(--line);
+    height: 2px;
+    border-radius: 2px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+
+  .status-bar-inner {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .status-text {
+    font-size: 13px;
+    color: var(--sub);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Results */
+  #resultArea {
+    margin-top: 40px;
+    display: none;
+  }
+
+  #resultList {
+    display: grid;
+  }
+
+  .result-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    animation: fadeIn 0.2s ease;
+  }
+
+  .result-icon {
+    width: 22px;
+    height: 22px;
+    flex: none;
+    border-radius: 50%;
+    background: #eaf3ee;
+    color: var(--ok);
+    display: grid;
+    place-items: center;
+  }
+
+  .result-icon svg { width: 12px; height: 12px; }
+
+  .result-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .result-name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .result-size {
+    font-size: 12px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn-dl {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--ink);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+
+  .btn-dl:hover { border-color: var(--ink); }
+
+  .download-all {
+    margin-top: 20px;
+    width: 100%;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    max-width: min(520px, calc(100vw - 32px));
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+    padding: 11px 18px;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  /* Supported conversions */
+  .support-table {
+    margin-top: 72px;
+  }
+
+  .support-table h2 {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+
+  .support-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .support-grid th,
+  .support-grid td {
+    text-align: left;
+    vertical-align: top;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .support-grid thead th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--faint);
+    border-bottom-color: var(--ink);
+    padding-top: 0;
+  }
+
+  .support-grid tbody th {
+    font-weight: 700;
+    width: 34%;
+    padding-right: 16px;
+  }
+
+  .support-grid td { color: var(--sub); }
+
+  .support-grid .note {
+    display: block;
+    font-size: 12px;
+    color: var(--faint);
+  }
+
+  .support-foot {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--faint);
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--faint);
+  }
+
+  @media (max-width: 600px) {
+    header { padding: 28px 0 20px; }
+    #dropzone { padding: 40px 18px 34px; }
+    .file-card {
+      grid-template-columns: 48px 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 6px 14px;
+    }
+    .thumb-wrap { width: 48px; height: 48px; grid-row: span 2; }
+    .remove-btn { grid-column: 3; grid-row: 1; }
+    .format-select-wrap { grid-column: 2 / 4; grid-row: 2; }
+    .controls { flex-direction: column; align-items: stretch; }
+    .format-select-wrap { flex-wrap: wrap; }
+    .tag-panel { padding: 14px; }
+    .tag-grid { grid-template-columns: 1fr 1fr; }
+    .tag-field { grid-column: 1 / -1; }
+    .tag-field.narrow { grid-column: span 1; }
+    .btn-group { justify-content: flex-end; }
+    .support-grid tbody th { width: 40%; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="wordmark">Convrt</div>
+    <div class="tagline">画像・PDF・EPUB・音声の変換</div>
+  </header>
+
+  <!-- Drop Zone -->
+  <div id="dropzone" tabindex="0" role="button" aria-label="ファイルを選択">
+    <svg class="drop-icon" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <path d="M11 5h13l9 9v19a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M24 5v9h9" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M20 29V19m0 0l-4 4m4-4l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="drop-title">ここにファイルをドロップ</div>
+    <div class="drop-sub">または <u>クリックして選択</u>（複数可）</div>
+    <div class="drop-formats">JPEG・PNG・WebP・GIF・BMP・ICO・SVG・HEIC・AVIF・PDF・EPUB・MP4・MOV・MP3 など</div>
+    <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*,.pdf,.heic,.heif,.svg,.epub,.avif,.ico,.mp4,.m4a,.mov,.mkv,.webm,.mp3,.wav,.aac,.flac,.ogg">
+  </div>
+
+  <!-- Preview / File List -->
+  <div id="previewArea">
+    <div class="section-label">選択したファイル</div>
+    <div id="fileList"></div>
+
+    <div class="controls">
+      <div class="settings">
+        <div class="quality-wrap">
+          <span class="quality-label">画質</span>
+          <input type="range" id="qualitySlider" min="10" max="100" value="95" aria-label="画質">
+          <span id="qualityVal">95</span>
+        </div>
+        <div class="quality-wrap" id="dpiWrap" hidden>
+          <span class="quality-label">PDF の解像度</span>
+          <select class="fmt-sel" id="dpiSelect" aria-label="PDF の解像度">
+            <option value="150">150 dpi</option>
+            <option value="200">200 dpi</option>
+            <option value="300" selected>300 dpi（推奨）</option>
+            <option value="400">400 dpi</option>
+            <option value="600">600 dpi</option>
+          </select>
+        </div>
+        <div class="quality-wrap" id="mp3Wrap" hidden>
+          <span class="quality-label">MP3 の音質</span>
+          <select class="fmt-sel" id="bitrateSelect" aria-label="MP3 の音質">
+            <option value="128">128 kbps</option>
+            <option value="192" selected>192 kbps（標準）</option>
+            <option value="256">256 kbps</option>
+            <option value="320">320 kbps（最高）</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-ghost" id="clearBtn">すべて取り消す</button>
+        <button class="btn btn-primary" id="convertBtn">変換する<span class="arrow" aria-hidden="true">→</span></button>
+      </div>
+    </div>
+    <p class="quality-hint">画質は JPEG・WebP に効きます。100 にすると JPEG の色のにじみがなくなります。文字が中心の PDF は PNG にすると最もくっきりします。</p>
+  </div>
+
+  <!-- Status -->
+  <div id="statusArea">
+    <div class="status-bar-wrap">
+      <div class="status-bar-inner" id="statusBar"></div>
+    </div>
+    <div class="status-text" id="statusText">変換中…</div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultArea">
+    <div class="section-label">変換したファイル</div>
+    <div id="resultList"></div>
+  </div>
+
+  <!-- Format support table -->
+  <section class="support-table">
+    <h2>対応している変換</h2>
+    <table class="support-grid">
+      <thead>
+        <tr><th scope="col">元のファイル</th><th scope="col">変換できる形式</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">JPEG・PNG・WebP</th><td>JPEG、PNG、WebP、BMP、ICO、EPUB</td></tr>
+        <tr><th scope="row">GIF・BMP・AVIF</th><td>JPEG、PNG、WebP、BMP</td></tr>
+        <tr><th scope="row">HEIC（iPhone の写真）</th><td>JPEG、PNG、WebP</td></tr>
+        <tr><th scope="row">SVG</th><td>PNG、JPEG、WebP</td></tr>
+        <tr><th scope="row">ICO</th><td>PNG、JPEG、ICO</td></tr>
+        <tr><th scope="row">PDF</th><td>JPEG、PNG（ページごと）、EPUB<span class="note">解像度は 150〜600 dpi から選べます</span></td></tr>
+        <tr><th scope="row">MP4・MOV・WebM など（動画）</th><td>MP3、WAV<span class="note">動画から音声だけを取り出します</span></td></tr>
+        <tr><th scope="row">MP3・M4A・WAV など（音声）</th><td>MP3、WAV</td></tr>
+        <tr><th scope="row">EPUB</th><td>PDF、JPEG、PNG<span class="note">縦書き・ルビ・目次（リンクとしおり付き）に対応</span></td></tr>
+      </tbody>
+    </table>
+    <p class="support-foot" id="avifNote">AVIF は、書き出しに対応したブラウザでのみ変換先に表示されます。</p>
+  </section>
+
+  <footer>Convrt — ファイルは送信されず、すべてお使いのブラウザで処理されます。</footer>
+
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<datalist id="genreList"></datalist>
+
+<!-- PDF.js for PDF rendering -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+// PDF.js が読み込めなくても（オフライン等）画像の変換は動くようにする
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+function getPdfLib() {
+  if (!window.pdfjsLib) throw new Error('PDF.js を読み込めませんでした（ネットワークを確認してください）');
+  return window.pdfjsLib;
+}
+
+// ─── State ────────────────────────────────────────────────
+const files = []; // { file, targetFormat, id, thumbUrl }
+let idCounter = 0;
+let resultUrls = [];
+let converting = false;
+
+// ─── Format maps ──────────────────────────────────────────
+const OUTPUT_FORMATS = {
+  'image/jpeg':       ['JPEG','PNG','WebP','AVIF','BMP','ICO','EPUB'],
+  'image/png':        ['PNG','JPEG','WebP','AVIF','BMP','ICO','EPUB'],
+  'image/webp':       ['WebP','JPEG','PNG','AVIF','BMP','ICO','EPUB'],
+  'image/avif':       ['AVIF','JPEG','PNG','WebP','BMP'],
+  'image/gif':        ['PNG','JPEG','WebP','AVIF','BMP'], // GIF はブラウザで書き出せないので出力先にしない
+  'image/bmp':        ['BMP','JPEG','PNG','WebP','AVIF'],
+  'image/x-icon':     ['ICO','PNG','JPEG'],
+  'image/vnd.microsoft.icon': ['ICO','PNG','JPEG'],
+  'image/svg+xml':    ['PNG','JPEG','WebP','AVIF'],
+  'application/epub+zip': ['JPEG','PNG','PDF'],
+  'application/pdf':  ['JPEG','PNG','EPUB'],
+  'default':          ['JPEG','PNG','WebP','AVIF','BMP'],
+};
+
+// canvas が実際にエンコードできるか（非対応だと黙って PNG にフォールバックされる）
+const ENCODE_SUPPORT = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1;
+  const can = mime => { try { return c.toDataURL(mime).startsWith(`data:${mime}`); } catch (e) { return false; } };
+  return { WebP: can('image/webp'), AVIF: can('image/avif') };
+})();
+
+function getFormats(mimeType) {
+  const m = mimeType.toLowerCase();
+  let list;
+  if (m === 'audio/mpeg' || m === 'audio/mp3') list = ['MP3TAG','MP3','WAV']; // MP3 は再エンコードせずタグだけ変更が既定
+  else if (m.startsWith('video/') || m.startsWith('audio/')) list = ['MP3','WAV'];
+  else if (m.includes('heic') || m.includes('heif')) list = ['JPEG','PNG','WebP','AVIF'];
+  else if (m.includes('epub')) list = ['JPEG','PNG','PDF'];
+  else if (m.includes('ico') || m.includes('icon')) list = ['ICO','PNG','JPEG'];
+  else list = OUTPUT_FORMATS[m] || OUTPUT_FORMATS['default'];
+  return list.filter(f => ENCODE_SUPPORT[f] !== false);
+}
+
+const MIME = { JPEG:'image/jpeg', PNG:'image/png', WebP:'image/webp', AVIF:'image/avif', BMP:'image/bmp' };
+const EXT  = { JPEG:'jpg', PNG:'png', WebP:'webp', AVIF:'avif', BMP:'bmp', ICO:'ico', EPUB:'epub', PDF:'pdf', MP3:'mp3', MP3TAG:'mp3', WAV:'wav' };
+// 変換先の選択肢の表示名
+const FORMAT_LABEL = { MP3TAG: 'MP3（タグのみ変更）', MP3: 'MP3' };
+const formatName = f => f === 'MP3TAG' ? 'MP3' : f;
+const QUALITY_FORMATS = new Set(['JPEG','WebP','AVIF']);
+const OPAQUE_FORMATS  = new Set(['JPEG','BMP']);
+
+// ─── DOM refs ─────────────────────────────────────────────
+const dropzone   = document.getElementById('dropzone');
+const fileInput  = document.getElementById('fileInput');
+const previewArea= document.getElementById('previewArea');
+const fileList   = document.getElementById('fileList');
+const convertBtn = document.getElementById('convertBtn');
+const clearBtn   = document.getElementById('clearBtn');
+const statusArea = document.getElementById('statusArea');
+const statusBar  = document.getElementById('statusBar');
+const statusText = document.getElementById('statusText');
+const resultArea = document.getElementById('resultArea');
+const resultList = document.getElementById('resultList');
+const qualitySlider = document.getElementById('qualitySlider');
+const qualityVal    = document.getElementById('qualityVal');
+const dpiWrap       = document.getElementById('dpiWrap');
+const dpiSelect     = document.getElementById('dpiSelect');
+const mp3Wrap       = document.getElementById('mp3Wrap');
+const bitrateSelect = document.getElementById('bitrateSelect');
+const toast      = document.getElementById('toast');
+
+// AVIF に書き出せるブラウザならその旨を表示
+if (ENCODE_SUPPORT.AVIF) {
+  document.getElementById('avifNote').textContent = 'お使いのブラウザでは AVIF への書き出しも利用できます。';
+}
+
+const ICON_CLOSE = '<svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const ICON_CHECK = '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_CHEVRON = '<svg viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CONVERT_LABEL = '変換する<span class="arrow" aria-hidden="true">→</span>';
+
+// ─── Drag & Drop ──────────────────────────────────────────
+// input は dropzone の中にあるので、input 自身のクリックが伝播してきた場合は無視する
+dropzone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+dropzone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', e => {
+  // 子要素への移動で発火するちらつきを防ぐ
+  if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('dragover');
+});
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  handleFiles([...e.dataTransfer.files]);
+});
+// ドロップゾーン外に落としたときにブラウザがファイルを開いてしまうのを防ぐ
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+fileInput.addEventListener('change', () => {
+  handleFiles([...fileInput.files]);
+  fileInput.value = ''; // 同じファイルを再選択しても change が発火するように
+});
+
+qualitySlider.addEventListener('input', () => { qualityVal.textContent = qualitySlider.value; });
+
+clearBtn.addEventListener('click', () => {
+  if (converting) return;
+  files.forEach(f => { if (f.thumbUrl) URL.revokeObjectURL(f.thumbUrl); });
+  files.length = 0;
+  fileList.innerHTML = '';
+  revokeResults();
+  resultList.innerHTML = '';
+  previewArea.style.display = 'none';
+  statusArea.style.display = 'none';
+  resultArea.style.display = 'none';
+  fileInput.value = '';
+  updateOptionVisibility();
+});
+
+const isPdfFile = f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+const MEDIA_EXT = /\.(mp4|m4v|m4a|mov|mkv|webm|avi|3gp|mp3|wav|aac|flac|ogg|oga|opus)$/i;
+const isMediaFile = f => /^(video|audio)\//.test(f.type) || MEDIA_EXT.test(f.name);
+
+// PDF があるときだけ解像度、動画・音声があるときだけ MP3 の音質を表示
+function updateOptionVisibility() {
+  dpiWrap.hidden = !files.some(e => isPdfFile(e.file));
+  mp3Wrap.hidden = !files.some(e => isMediaFile(e.file));
+}
+
+function revokeResults() {
+  resultUrls.forEach(u => URL.revokeObjectURL(u));
+  resultUrls = [];
+}
+
+// ─── File handling ────────────────────────────────────────
+function handleFiles(newFiles) {
+  const accepted = ['image/', 'video/', 'audio/', 'application/pdf', 'application/epub'];
+  newFiles.forEach(f => {
+    const lname = f.name.toLowerCase();
+    const ok = accepted.some(p => f.type.startsWith(p)) ||
+               lname.endsWith('.heic') || lname.endsWith('.heif') ||
+               lname.endsWith('.svg')  || lname.endsWith('.epub') ||
+               lname.endsWith('.avif') || lname.endsWith('.ico')  ||
+               lname.endsWith('.pdf')  || MEDIA_EXT.test(lname);
+    if (!ok) { showToast(`未対応: ${f.name}`); return; }
+    const mime = f.type || guessType(f.name);
+    const fmts = getFormats(mime);
+    const entry = { file: f, targetFormat: fmts[0], id: idCounter++, thumbUrl: null };
+    files.push(entry);
+    renderCard(entry, fmts);
+    if (isMediaFile(f)) entry.tagsReady = loadSourceTags(entry);
+  });
+  updateOptionVisibility();
+  if (files.length > 0) {
+    previewArea.style.display = 'block';
+    if (!converting) {
+      resultArea.style.display = 'none';
+      statusArea.style.display = 'none';
+    }
+  }
+}
+
+function guessType(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp',
+                avif:'image/avif', gif:'image/gif', bmp:'image/bmp', svg:'image/svg+xml',
+                ico:'image/x-icon', pdf:'application/pdf',
+                heic:'image/heic', heif:'image/heif',
+                epub:'application/epub+zip',
+                mp4:'video/mp4', m4v:'video/mp4', mov:'video/quicktime', mkv:'video/x-matroska',
+                webm:'video/webm', avi:'video/x-msvideo', '3gp':'video/3gpp',
+                m4a:'audio/mp4', mp3:'audio/mpeg', wav:'audio/wav', aac:'audio/aac',
+                flac:'audio/flac', ogg:'audio/ogg', oga:'audio/ogg', opus:'audio/ogg' };
+  return map[ext] || 'image/jpeg';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(2) + ' MB';
+}
+
+function renderCard(entry, fmts) {
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  card.id = `card-${entry.id}`;
+
+  // Thumbnail
+  const thumbWrap = document.createElement('div');
+  thumbWrap.className = 'thumb-wrap';
+  const lname = entry.file.name.toLowerCase();
+  if (lname.endsWith('.pdf') || entry.file.type === 'application/pdf') {
+    thumbWrap.innerHTML = '<span class="pdf-icon">PDF</span>';
+  } else if (lname.endsWith('.epub') || entry.file.type.includes('epub')) {
+    thumbWrap.innerHTML = '<span class="pdf-icon">EPUB</span>';
+  } else if (isMediaFile(entry.file)) {
+    entry.thumbWrap = thumbWrap;
+    updateCardCover(entry); // 形式名を表示（ジャケット画像があれば読み込み後に差し替え）
+  } else {
+    thumbWrap.innerHTML = '<span class="pdf-icon">IMG</span>';
+    queueThumbnail(entry, thumbWrap);
+  }
+
+  // Info（ファイル名は textContent で入れる：名前に < や " を含んでも壊れない）
+  const info = document.createElement('div');
+  info.className = 'file-info';
+  const name = entry.file.name;
+  const srcExt = name.includes('.')
+    ? name.split('.').pop().toUpperCase()
+    : (entry.file.type.split('/').pop() || '?').toUpperCase();
+  const nameEl = document.createElement('div');
+  nameEl.className = 'file-name';
+  nameEl.textContent = name;
+  nameEl.title = name;
+  const metaEl = document.createElement('div');
+  metaEl.className = 'file-meta';
+  metaEl.textContent = `${srcExt} · ${formatSize(entry.file.size)}`;
+  info.appendChild(nameEl);
+  info.appendChild(metaEl);
+
+  // Format selector
+  const fmtWrap = document.createElement('div');
+  fmtWrap.className = 'format-select-wrap';
+  const fmtLabel = document.createElement('div');
+  fmtLabel.className = 'format-label';
+  fmtLabel.textContent = '変換先';
+  const sel = document.createElement('select');
+  sel.className = 'fmt-sel';
+  sel.setAttribute('aria-label', `${name} の変換先`);
+  fmts.forEach(f => {
+    const o = document.createElement('option');
+    o.value = f; o.textContent = FORMAT_LABEL[f] || f;
+    if (f === entry.targetFormat) o.selected = true;
+    sel.appendChild(o);
+  });
+  fmtWrap.appendChild(fmtLabel);
+  fmtWrap.appendChild(sel);
+
+  // MP3 タグの編集（変換先が MP3 のときだけ）
+  let tagPanel = null;
+  const tagBtn = document.createElement('button');
+  tagBtn.type = 'button';
+  tagBtn.className = 'tag-toggle';
+  tagBtn.innerHTML = `タグを編集${ICON_CHEVRON}`;
+  tagBtn.setAttribute('aria-expanded', 'false');
+  tagBtn.addEventListener('click', async () => {
+    const open = tagBtn.getAttribute('aria-expanded') !== 'true';
+    if (open && !tagPanel) {
+      await entry.tagsReady;
+      tagPanel = buildTagPanel(entry);
+      card.appendChild(tagPanel);
+    }
+    if (tagPanel) tagPanel.hidden = !open;
+    tagBtn.setAttribute('aria-expanded', String(open));
+    if (open) tagPanel.querySelector('input').focus();
+  });
+  const updateTagUi = () => {
+    const mp3 = isMp3Target(entry.targetFormat) && isMediaFile(entry.file);
+    tagBtn.hidden = !mp3;
+    if (!mp3 && tagPanel) { tagPanel.hidden = true; tagBtn.setAttribute('aria-expanded', 'false'); }
+  };
+  updateTagUi();
+  fmtWrap.appendChild(tagBtn);
+  sel.addEventListener('change', () => { entry.targetFormat = sel.value; updateTagUi(); });
+
+  // Remove
+  const rmBtn = document.createElement('button');
+  rmBtn.className = 'remove-btn';
+  rmBtn.innerHTML = ICON_CLOSE;
+  rmBtn.setAttribute('aria-label', `${name} を削除`);
+  rmBtn.addEventListener('click', () => {
+    const idx = files.findIndex(f => f.id === entry.id);
+    if (idx !== -1) files.splice(idx, 1);
+    if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+    card.remove();
+    if (files.length === 0) previewArea.style.display = 'none';
+    updateOptionVisibility();
+  });
+
+  card.appendChild(thumbWrap);
+  card.appendChild(info);
+  card.appendChild(fmtWrap);
+  card.appendChild(rmBtn);
+  fileList.appendChild(card);
+}
+
+// サムネイルは 1 枚ずつ縮小して作る。大きな写真をそのまま <img> で並べると、
+// 枚数ぶんフル解像度でデコードされたままになり、メモリを大量に使って重くなる。
+let thumbQueue = Promise.resolve();
+function queueThumbnail(entry, wrap) {
+  thumbQueue = thumbQueue.then(() => makeThumbnail(entry, wrap)).catch(() => {});
+}
+
+async function makeThumbnail(entry, wrap) {
+  if (!wrap.isConnected) return; // 作る前にカードが削除された
+  const TW = 120, TH = 96;
+  try {
+    const bmp = await createImageBitmap(entry.file, { resizeWidth: TW * 2, resizeQuality: 'medium' });
+    const c = newCanvas(TW, TH);
+    const scale = Math.max(TW / bmp.width, TH / bmp.height);
+    const w = bmp.width * scale, h = bmp.height * scale;
+    c.getContext('2d').drawImage(bmp, (TW - w) / 2, (TH - h) / 2, w, h);
+    bmp.close();
+    wrap.replaceChildren(c);
+  } catch (e) {
+    // SVG など createImageBitmap で読めない形式は <img> で表示
+    const img = document.createElement('img');
+    entry.thumbUrl = URL.createObjectURL(entry.file);
+    img.src = entry.thumbUrl;
+    img.alt = '';
+    img.decoding = 'async';
+    img.onerror = () => { wrap.innerHTML = '<span class="pdf-icon">IMG</span>'; };
+    wrap.replaceChildren(img);
+  }
+}
+
+// ─── Progress ─────────────────────────────────────────────
+let progressLabel = '';
+function reportProgress(detail) {
+  statusText.textContent = detail ? `${progressLabel} — ${detail}` : progressLabel;
+}
+
+// 長い処理の途中で画面の更新・操作を受け付けるために、いったん制御を返す
+function yieldToUI() {
+  if (window.scheduler && scheduler.yield) return scheduler.yield();
+  return new Promise(resolve => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => resolve();
+    ch.port2.postMessage(null);
+  });
+}
+
+// canvas のメモリを即座に解放する（特に iOS Safari は canvas の総メモリ上限が小さい）
+function releaseCanvas(c) {
+  c.width = 0;
+  c.height = 0;
+}
+
+// ─── Convert ──────────────────────────────────────────────
+convertBtn.addEventListener('click', async () => {
+  if (converting) return;
+  if (files.length === 0) { showToast('ファイルを選択してください'); return; }
+  const quality = parseInt(qualitySlider.value, 10) / 100;
+  const dpi = parseInt(dpiSelect.value, 10);
+  const bitrate = parseInt(bitrateSelect.value, 10);
+  const queue = [...files]; // 変換中にリストが変わってもループが壊れないようにコピー
+
+  converting = true;
+  revokeResults();
+  resultList.innerHTML = '';
+  statusArea.style.display = 'block';
+  resultArea.style.display = 'none';
+  convertBtn.disabled = true;
+  clearBtn.disabled = true;
+  convertBtn.textContent = '変換中…';
+
+  const results = [];
+  const usedNames = new Set();
+  let failed = 0;
+
+  try {
+    for (let done = 0; done < queue.length; done++) {
+      const entry = queue[done];
+      const target = entry.targetFormat;
+      progressLabel = `変換中 (${done+1}/${queue.length}): ${entry.file.name}`;
+      reportProgress();
+      statusBar.style.width = ((done / queue.length) * 100) + '%';
+      try {
+        if (entry.tagsReady) await entry.tagsReady;
+        const tags = isMp3Target(target) && entry.tags ? { ...entry.tags } : null;
+        const blobs = await convertFile(entry.file, target, quality, { dpi, bitrate, tags });
+        const baseName = entry.file.name.replace(/\.[^.]+$/, '');
+        const ext = EXT[target] || 'png';
+        const digits = String(blobs.length).length;
+        blobs.forEach((blob, i) => {
+          const suffix = blobs.length > 1 ? `_p${String(i+1).padStart(digits, '0')}` : '';
+          results.push({ blob, name: uniqueName(`${baseName}${suffix}`, ext, usedNames), format: formatName(target) });
+        });
+      } catch(e) {
+        console.error(e);
+        failed++;
+        showToast(`エラー: ${entry.file.name} — ${e && e.message ? e.message : e}`);
+      }
+    }
+
+    statusBar.style.width = '100%';
+    statusText.textContent = `完了 — ${results.length} ファイル変換済み` + (failed ? ` / ${failed} 件失敗` : '');
+
+    // Render results
+    results.forEach(r => {
+      r.url = URL.createObjectURL(r.blob);
+      resultUrls.push(r.url);
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `
+        <span class="result-icon">${ICON_CHECK}</span>
+        <div class="result-info">
+          <div class="result-name"></div>
+          <div class="result-size"></div>
+        </div>
+        <a class="btn-dl">保存</a>`;
+      card.querySelector('.result-name').textContent = r.name;
+      card.querySelector('.result-size').textContent = `${r.format} · ${formatSize(r.blob.size)}`;
+      const dl = card.querySelector('.btn-dl');
+      dl.href = r.url;
+      dl.download = r.name;
+      resultList.appendChild(card);
+    });
+
+    // "Download All" if multiple
+    if (results.length > 1) {
+      const allBtn = document.createElement('button');
+      allBtn.className = 'btn btn-outline download-all';
+      allBtn.textContent = `すべて保存（${results.length} 件）`;
+      allBtn.addEventListener('click', () => {
+        results.forEach((r, i) => {
+          setTimeout(() => {
+            const a = document.createElement('a');
+            a.href = r.url;
+            a.download = r.name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }, i * 300);
+        });
+      });
+      resultList.appendChild(allBtn);
+    }
+
+    if (results.length > 0) resultArea.style.display = 'block';
+  } finally {
+    converting = false;
+    convertBtn.disabled = false;
+    clearBtn.disabled = false;
+    convertBtn.innerHTML = CONVERT_LABEL;
+  }
+});
+
+// 同名ファイル（例: photo.jpg と photo.png → photo.webp）の上書きを防ぐ
+function uniqueName(base, ext, used) {
+  let name = `${base}.${ext}`;
+  for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n}).${ext}`;
+  used.add(name.toLowerCase());
+  return name;
+}
+
+// ─── Core conversion logic ────────────────────────────────
+async function convertFile(file, targetFormat, quality, { dpi = 300, bitrate = 192, tags = null } = {}) {
+  const lname = file.name.toLowerCase();
+  const mime  = (file.type || guessType(file.name)).toLowerCase();
+
+  const isPDF  = mime === 'application/pdf'      || lname.endsWith('.pdf');
+  const isEPUB = mime.includes('epub')           || lname.endsWith('.epub');
+  const isSVG  = mime === 'image/svg+xml'        || lname.endsWith('.svg');
+
+  if (isMp3Target(targetFormat) || targetFormat === 'WAV') return [await convertMedia(file, targetFormat, bitrate, tags)];
+  if (isPDF) {
+    if (targetFormat === 'EPUB') return [await convertPDFtoEPUB(file, quality, dpi)];
+    return convertPDF(file, targetFormat, quality, dpi);
+  }
+  if (isEPUB) {
+    if (targetFormat === 'PDF') return [await convertEpubToPDF(file, quality)];
+    return convertEpubToImages(file, targetFormat, quality);
+  }
+  if (isSVG)  return [await convertSVG(file, targetFormat, quality)];
+
+  const src = await toDecodableBlob(file, mime, lname);
+  if (targetFormat === 'ICO')  return [await convertToICO(src)];
+  if (targetFormat === 'EPUB') return [await buildEpubFromImages([src], file.name.replace(/\.[^.]+$/,''), quality)];
+  return [await convertImage(src, targetFormat, quality)];
+}
+
+// Blob を <img> として読み込み、fn の実行が終わったら objectURL を解放する
+async function withImage(blob, fn) {
+  const url = URL.createObjectURL(blob);
+  try {
+    let img;
+    try { img = await loadImage(url); }
+    catch (e) { throw new Error('画像を読み込めませんでした（このブラウザでは未対応の形式の可能性があります）'); }
+    return await fn(img);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// canvas → Blob。JPEG/BMP は透過部分を白で塗りつぶす。
+// ブラウザが非対応の形式を指定すると toBlob は黙って PNG を返すので、それを検出してエラーにする。
+async function canvasToBlob(canvas, format, quality) {
+  if (OPAQUE_FORMATS.has(format)) {
+    // 透過部分を白に（コピーを作らずその場で背面に塗る）
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-over';
+    fillWhite(ctx, canvas.width, canvas.height);
+    ctx.restore();
+  }
+  if (format === 'BMP') return encodeBMP(canvas);
+  const mime = MIME[format] || 'image/png';
+  const q = QUALITY_FORMATS.has(format) ? quality : undefined;
+  const blob = await new Promise(res => canvas.toBlob(res, mime, q));
+  if (!blob) throw new Error(`${format} への書き出しに失敗しました（画像が大きすぎる可能性があります）`);
+  if (blob.type !== mime) throw new Error(`このブラウザは ${format} の書き出しに対応していません`);
+  return blob;
+}
+
+// PDF / EPUB に埋め込む JPEG ページ（base64 を経由せずバイト列のまま扱う）
+async function canvasToJpegPage(canvas, quality) {
+  const w = canvas.width, h = canvas.height;
+  const blob = await canvasToBlob(canvas, 'JPEG', quality);
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), w, h };
+}
+
+// 24bit BMP エンコーダ（canvas.toBlob は BMP に対応していないブラウザがほとんど）
+function encodeBMP(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const rowSize = Math.ceil(w * 3 / 4) * 4;
+  const imageSize = rowSize * h;
+  const buf = new ArrayBuffer(54 + imageSize);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x42); dv.setUint8(1, 0x4D);  // 'BM'
+  dv.setUint32(2, buf.byteLength, true);
+  dv.setUint32(10, 54, true);                   // pixel data offset
+  dv.setUint32(14, 40, true);                   // BITMAPINFOHEADER
+  dv.setInt32(18, w, true);
+  dv.setInt32(22, h, true);                     // 正の値 = ボトムアップ
+  dv.setUint16(26, 1, true);                    // planes
+  dv.setUint16(28, 24, true);                   // bit count
+  dv.setUint32(34, imageSize, true);
+  dv.setInt32(38, 2835, true);                  // 72 dpi
+  dv.setInt32(42, 2835, true);
+  const px = new Uint8Array(buf, 54);
+  for (let y = 0; y < h; y++) {
+    let o = (h - 1 - y) * rowSize;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      px[o++] = data[i + 2]; px[o++] = data[i + 1]; px[o++] = data[i];
+    }
+  }
+  return new Blob([buf], { type: 'image/bmp' });
+}
+
+// 必要になったときだけ外部ライブラリを読み込む（読み込みは 1 回だけ）
+const scriptPromises = {};
+function loadLibrary(url, globalName, label) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  if (!scriptPromises[url]) {
+    scriptPromises[url] = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => window[globalName] ? resolve(window[globalName]) : reject(new Error(`${label}の初期化に失敗しました`));
+      s.onerror = () => { delete scriptPromises[url]; s.remove(); reject(new Error(`${label}を読み込めませんでした（ネットワークを確認してください）`)); };
+      document.head.appendChild(s);
+    });
+  }
+  return scriptPromises[url];
+}
+
+// ── HEIC: Safari 以外はネイティブでデコードできないので heic2any で PNG にする ──
+const loadHeicLib = () => loadLibrary('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js', 'heic2any', 'HEICデコーダ');
+
+async function toDecodableBlob(file, mime, lname) {
+  const isHEIC = mime.includes('heic') || mime.includes('heif') || /\.hei[cf]$/.test(lname);
+  if (!isHEIC) return file;
+  try { await withImage(file, () => {}); return file; } catch (e) { /* ネイティブ非対応 */ }
+  const heic2any = await loadHeicLib();
+  const out = await heic2any({ blob: file, toType: 'image/png' });
+  return Array.isArray(out) ? out[0] : out;
+}
+
+// ─── MP3 タグ（ID3） ──────────────────────────────────────
+// 元のファイル（MP3 の ID3 / MP4・M4A のメタデータ）からタグを読み込んで初期値にし、
+// 編集した内容を ID3v2.3 として MP3 の先頭に書き込む。
+const TAG_TEXT_FIELDS = [
+  ['title', 'タイトル', 'wide'],
+  ['artist', 'アーティスト'],
+  ['albumArtist', 'アルバムアーティスト'],
+  ['album', 'アルバム', 'wide'],
+  ['year', '年', 'narrow'],
+  ['track', 'トラック番号', 'narrow'],
+  ['genre', 'ジャンル'],
+  ['comment', 'コメント', 'wide'],
+];
+// 「ほかの MP3 にも反映」でコピーする項目（曲ごとに違うタイトル・トラック番号などは除く）
+const ALBUM_FIELDS = ['artist', 'albumArtist', 'album', 'year', 'genre', 'cover'];
+const GENRE_SUGGESTIONS = ['J-Pop', 'Pop', 'Rock', 'Anime', 'Soundtrack', 'Classical', 'Jazz', 'Electronic',
+  'Hip-Hop', 'R&B', 'Vocal', 'Instrumental', 'Podcast', 'Audiobook'];
+document.getElementById('genreList').append(...GENRE_SUGGESTIONS.map(g => Object.assign(document.createElement('option'), { value: g })));
+const ID3V1_GENRES = ('Blues,Classic Rock,Country,Dance,Disco,Funk,Grunge,Hip-Hop,Jazz,Metal,New Age,Oldies,Other,Pop,R&B,' +
+  'Rap,Reggae,Rock,Techno,Industrial,Alternative,Ska,Death Metal,Pranks,Soundtrack,Euro-Techno,Ambient,Trip-Hop,Vocal,' +
+  'Jazz+Funk,Fusion,Trance,Classical,Instrumental,Acid,House,Game,Sound Clip,Gospel,Noise,AlternRock,Bass,Soul,Punk,' +
+  'Space,Meditative,Instrumental Pop,Instrumental Rock,Ethnic,Gothic,Darkwave,Techno-Industrial,Electronic,Pop-Folk,' +
+  'Eurodance,Dream,Southern Rock,Comedy,Cult,Gangsta,Top 40,Christian Rap,Pop/Funk,Jungle,Native American,Cabaret,' +
+  'New Wave,Psychadelic,Rave,Showtunes,Trailer,Lo-Fi,Tribal,Acid Punk,Acid Jazz,Polka,Retro,Musical,Rock & Roll,Hard Rock').split(',');
+// 自前で書き込むフレーム（元の MP3 から引き継ぐときはこれ以外をそのままコピーする）
+const MANAGED_ID3 = new Set(['TIT2', 'TPE1', 'TPE2', 'TALB', 'TYER', 'TDRC', 'TRCK', 'TCON', 'COMM', 'APIC']);
+
+const isMp3Target = f => f === 'MP3' || f === 'MP3TAG';
+const isMp3File = f => f.type === 'audio/mpeg' || f.type === 'audio/mp3' || /\.mp3$/i.test(f.name);
+const isMp4File = f => /\.(mp4|m4a|m4v|mov|3gp)$/i.test(f.name) || /^(video|audio)\/(mp4|quicktime|3gpp|x-m4a)/.test(f.type);
+
+const u32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const syncsafe = (b, o) => (b[o] << 21) | (b[o + 1] << 14) | (b[o + 2] << 7) | b[o + 3];
+const latin1 = b => String.fromCharCode(...b);
+
+// 昔の日本の MP3 は「文字コード 0（Latin-1）」と書いて Shift_JIS で入っていることが多い
+function decodeLegacy(bytes) {
+  if (!bytes.some(v => v >= 0x80)) return latin1(bytes);
+  for (const enc of ['utf-8', 'shift-jis']) {
+    try { return new TextDecoder(enc, { fatal: true }).decode(bytes); } catch (e) {}
+  }
+  return latin1(bytes);
+}
+
+function decodeId3String(bytes, enc) {
+  if (enc === 1 || enc === 2) {
+    let le = enc === 1, start = 0;
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) { le = true; start = 2; }
+    else if (bytes[0] === 0xFE && bytes[1] === 0xFF) { le = false; start = 2; }
+    return new TextDecoder(le ? 'utf-16le' : 'utf-16be').decode(bytes.subarray(start, start + ((bytes.length - start) & ~1)));
+  }
+  if (enc === 3) return new TextDecoder('utf-8').decode(bytes);
+  return decodeLegacy(bytes);
+}
+
+// 文字コードに応じた終端（0x00 / 0x00 0x00）の位置
+function findTerminator(b, start, enc) {
+  if (enc === 1 || enc === 2) {
+    for (let i = start; i + 1 < b.length; i += 2) if (b[i] === 0 && b[i + 1] === 0) return i;
+  } else {
+    for (let i = start; i < b.length; i++) if (b[i] === 0) return i;
+  }
+  return b.length;
+}
+
+function cleanGenre(g) {
+  const m = g.match(/^\((\d+)\)(.*)$/) || g.match(/^(\d+)$/);
+  if (!m) return g;
+  return (m[2] && m[2].trim()) || ID3V1_GENRES[+m[1]] || g;
+}
+
+// ID3v2 のフレームを読む。v2.3 の未対応フレームは元のまま返す（歌詞などを引き継ぐため）
+function parseId3v2(buf) {
+  const ver = buf[3], flags = buf[5];
+  const end = Math.min(buf.length, 10 + syncsafe(buf, 6));
+  const tags = {}, extra = [];
+  if (flags & 0x80) return { tags, extra }; // 非同期化されたタグ（まれ）は読まない
+  let p = 10;
+  if (flags & 0x40) p += ver === 4 ? syncsafe(buf, 10) : 4 + u32(buf, 10);
+  const idLen = ver === 2 ? 3 : 4, hdrLen = ver === 2 ? 6 : 10;
+  const MAP = ver === 2
+    ? { TT2: 'title', TP1: 'artist', TP2: 'albumArtist', TAL: 'album', TYE: 'year', TRK: 'track', TCO: 'genre', COM: 'comment', PIC: 'cover' }
+    : { TIT2: 'title', TPE1: 'artist', TPE2: 'albumArtist', TALB: 'album', TYER: 'year', TDRC: 'year', TRCK: 'track', TCON: 'genre', COMM: 'comment', APIC: 'cover' };
+
+  while (p + hdrLen <= end) {
+    const id = latin1(buf.subarray(p, p + idLen));
+    if (!/^[A-Z0-9]+$/.test(id)) break; // パディング
+    const size = ver === 2 ? (buf[p + 3] << 16) | (buf[p + 4] << 8) | buf[p + 5]
+               : ver === 4 ? syncsafe(buf, p + 4) : u32(buf, p + 4);
+    const fflags = ver === 2 ? 0 : (buf[p + 8] << 8) | buf[p + 9];
+    const body = buf.subarray(p + hdrLen, Math.min(end, p + hdrLen + size));
+    const key = MAP[id];
+    const unreadable = ver === 3 ? (fflags & 0xC0) : ver === 4 ? (fflags & 0x0C) : 0; // 圧縮・暗号化
+    if (key && !unreadable && body.length > 1) {
+      const enc = body[0];
+      if (key === 'cover') {
+        if (!tags.cover || tags.coverType !== 3) {
+          let q = 1, mime;
+          if (ver === 2) { mime = latin1(body.subarray(1, 4)).toUpperCase() === 'PNG' ? 'image/png' : 'image/jpeg'; q = 4; }
+          else { const t = findTerminator(body, 1, 0); mime = latin1(body.subarray(1, t)) || 'image/jpeg'; q = t + 1; }
+          const picType = body[q];
+          q = findTerminator(body, q + 1, enc) + (enc === 1 || enc === 2 ? 2 : 1);
+          if (q < body.length) {
+            tags.cover = { bytes: body.slice(q), mime: mime.includes('/') ? mime : `image/${mime.toLowerCase()}` };
+            tags.coverType = picType;
+          }
+        }
+      } else if (key === 'comment') {
+        const t = findTerminator(body, 4, enc);
+        const text = decodeId3String(body.subarray(t + (enc === 1 || enc === 2 ? 2 : 1)), enc).replace(/\0+$/, '');
+        if (!tags.comment) tags.comment = text;
+      } else {
+        let text = decodeId3String(body.subarray(1), enc).replace(/\0+$/, '').split('\0')[0].trim();
+        if (key === 'year') text = (text.match(/\d{4}/) || [text])[0];
+        if (key === 'genre') text = cleanGenre(text);
+        if (text) tags[key] = text;
+      }
+    } else if (ver === 3 && !MANAGED_ID3.has(id)) {
+      extra.push(buf.slice(p, p + hdrLen + size));
+    }
+    p += hdrLen + size;
+  }
+  delete tags.coverType;
+  return { tags, extra };
+}
+
+// MP3 のタグと、音声データの範囲（ID3v2 / ID3v1 を除いた部分）
+async function readMp3Tags(file) {
+  const head = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+  let tags = {}, extra = [], start = 0, end = file.size;
+  if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33 && head[3] >= 2 && head[3] <= 4) {
+    start = 10 + syncsafe(head, 6) + (head[5] & 0x10 ? 10 : 0);
+    ({ tags, extra } = parseId3v2(new Uint8Array(await file.slice(0, start).arrayBuffer())));
+  }
+  if (file.size - start >= 128) {
+    const t = new Uint8Array(await file.slice(file.size - 128).arrayBuffer());
+    if (t[0] === 0x54 && t[1] === 0x41 && t[2] === 0x47) { // "TAG"（ID3v1）
+      end -= 128;
+      const str = (o, n) => { const b = t.subarray(o, o + n); const z = b.indexOf(0); return decodeLegacy(z >= 0 ? b.subarray(0, z) : b).trim(); };
+      const v1 = { title: str(3, 30), artist: str(33, 30), album: str(63, 30), year: str(93, 4),
+        comment: str(97, t[125] === 0 ? 28 : 30), track: t[125] === 0 && t[126] ? String(t[126]) : '',
+        genre: ID3V1_GENRES[t[127]] || '' };
+      for (const [k, v] of Object.entries(v1)) if (v && !tags[k]) tags[k] = v;
+    }
+  }
+  return { tags, extra, start, end };
+}
+
+// MP4 / M4A のメタデータ（iTunes 形式の ilst）
+async function readMp4Tags(file) {
+  const read = async (pos, len) => new Uint8Array(await file.slice(pos, pos + len).arrayBuffer());
+  let moov = null;
+  for (let pos = 0; pos + 8 <= file.size;) {
+    const h = await read(pos, 16);
+    let size = u32(h, 0), hdr = 8;
+    const type = latin1(h.subarray(4, 8));
+    if (size === 1) { size = u32(h, 8) * 2 ** 32 + u32(h, 12); hdr = 16; }
+    else if (size === 0) size = file.size - pos;
+    if (size < hdr) break;
+    if (type === 'moov') {
+      if (size > 64 * 1024 * 1024) return {};
+      moov = await read(pos + hdr, size - hdr);
+      break;
+    }
+    pos += size;
+  }
+  if (!moov) return {};
+  const child = (b, s, e, want) => {
+    for (let p = s; p + 8 <= e;) {
+      const size = u32(b, p), type = latin1(b.subarray(p + 4, p + 8));
+      if (size < 8) break;
+      if (!want || type === want) { if (want) return { s: p + 8, e: Math.min(e, p + size) }; }
+      p += size;
+    }
+    return null;
+  };
+  const udta = child(moov, 0, moov.length, 'udta');
+  const meta = udta && child(moov, udta.s, udta.e, 'meta');
+  if (!meta) return {};
+  const ilst = child(moov, meta.s + 4, meta.e, 'ilst') || child(moov, meta.s, meta.e, 'ilst'); // meta は通常 full box
+  if (!ilst) return {};
+  const KEYS = { '©nam': 'title', '©ART': 'artist', 'aART': 'albumArtist', '©alb': 'album', '©day': 'year',
+                 '©gen': 'genre', '©cmt': 'comment', 'trkn': 'track', 'gnre': 'genre', 'covr': 'cover' };
+  const tags = {};
+  for (let p = ilst.s; p + 8 <= ilst.e;) {
+    const size = u32(moov, p), type = latin1(moov.subarray(p + 4, p + 8));
+    if (size < 8) break;
+    const key = KEYS[type];
+    const data = key && child(moov, p + 8, p + size, 'data');
+    if (data && data.e - data.s > 8) {
+      const kind = u32(moov, data.s) & 0xFFFFFF;
+      const v = moov.subarray(data.s + 8, data.e);
+      if (type === 'covr') tags.cover = { bytes: v.slice(), mime: kind === 14 ? 'image/png' : 'image/jpeg' };
+      else if (type === 'trkn') { const n = (v[2] << 8) | v[3], total = (v[4] << 8) | v[5]; if (n) tags.track = total ? `${n}/${total}` : String(n); }
+      else if (type === 'gnre') { const g = ID3V1_GENRES[((v[0] << 8) | v[1]) - 1]; if (g && !tags.genre) tags.genre = g; }
+      else {
+        let text = new TextDecoder().decode(v).trim();
+        if (key === 'year') text = (text.match(/\d{4}/) || [text])[0];
+        if (text) tags[key] = text;
+      }
+    }
+    p += size;
+  }
+  return tags;
+}
+
+// 元ファイルのタグを読み込んで entry.tags の初期値にする（タイトルの既定はファイル名）
+async function loadSourceTags(entry) {
+  const tags = { title: entry.file.name.replace(/\.[^.]+$/, '') };
+  for (const [k] of TAG_TEXT_FIELDS) if (!(k in tags)) tags[k] = '';
+  tags.cover = null;
+  try {
+    const src = isMp3File(entry.file) ? (await readMp3Tags(entry.file)).tags
+              : isMp4File(entry.file) ? await readMp4Tags(entry.file) : {};
+    for (const [k, v] of Object.entries(src)) if (v) tags[k] = v;
+  } catch (e) { console.warn('タグを読み込めませんでした', e); }
+  entry.tags = tags;
+  updateCardCover(entry);
+}
+
+// ID3v2.3 を作る（日本語は UTF-16、英数字だけなら Latin-1 で書く：古い機器でも読めるように）
+function buildId3(tags, extra = []) {
+  const parts = [];
+  const isAscii = s => /^[\x20-\x7E]*$/.test(s);
+  const strBytes = (s, enc, terminate) => {
+    if (enc === 0) return [...[...s].map(c => c.charCodeAt(0) & 0xFF), ...(terminate ? [0] : [])];
+    const out = [0xFF, 0xFE];
+    for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); out.push(c & 0xFF, c >> 8); }
+    if (terminate) out.push(0, 0);
+    return out;
+  };
+  const frame = (id, body) => {
+    const b = body instanceof Uint8Array ? body : new Uint8Array(body);
+    const h = new Uint8Array(10);
+    for (let i = 0; i < 4; i++) h[i] = id.charCodeAt(i);
+    new DataView(h.buffer).setUint32(4, b.length);
+    parts.push(h, b);
+  };
+  const text = (id, value) => {
+    value = (value || '').trim();
+    if (!value) return;
+    const enc = isAscii(value) ? 0 : 1;
+    frame(id, [enc, ...strBytes(value, enc, false)]);
+  };
+  text('TIT2', tags.title);
+  text('TPE1', tags.artist);
+  text('TPE2', tags.albumArtist);
+  text('TALB', tags.album);
+  text('TYER', ((tags.year || '').match(/\d{4}/) || [''])[0]);
+  text('TRCK', tags.track);
+  text('TCON', tags.genre);
+  const comment = (tags.comment || '').trim();
+  if (comment) {
+    const enc = isAscii(comment) ? 0 : 1;
+    frame('COMM', [enc, ...(enc ? [0x6A, 0x70, 0x6E] : [0x65, 0x6E, 0x67]), ...strBytes('', enc, true), ...strBytes(comment, enc, false)]);
+  }
+  if (tags.cover) {
+    const head = [0, ...strBytes(tags.cover.mime, 0, true), 3 /* front cover */, 0];
+    const body = new Uint8Array(head.length + tags.cover.bytes.length);
+    body.set(head);
+    body.set(tags.cover.bytes, head.length);
+    frame('APIC', body);
+  }
+  parts.push(...extra);
+  const size = parts.reduce((s, p) => s + p.length, 0);
+  if (!size) return new Uint8Array(0);
+  const header = new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0,
+    (size >> 21) & 0x7F, (size >> 14) & 0x7F, (size >> 7) & 0x7F, size & 0x7F]);
+  return new Blob([header, ...parts]);
+}
+
+// ジャケット画像：JPEG / PNG はそのまま、それ以外（WebP・HEIC など）は JPEG にする
+async function normalizeCover(file) {
+  const lname = file.name.toLowerCase();
+  if ((file.type === 'image/jpeg' || file.type === 'image/png') && file.size <= 8 * 1024 * 1024) {
+    return { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type };
+  }
+  const src = await toDecodableBlob(file, (file.type || guessType(file.name)).toLowerCase(), lname);
+  return withImage(src, async img => {
+    const s = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = newCanvas(Math.round(img.naturalWidth * s), Math.round(img.naturalHeight * s));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return canvasToJpegPage(c, 0.92).then(p => ({ bytes: p.bytes, mime: 'image/jpeg' }));
+  });
+}
+
+// カードのサムネイルにジャケット画像を表示
+function updateCardCover(entry) {
+  if (!entry.thumbWrap) return;
+  if (entry.thumbUrl) { URL.revokeObjectURL(entry.thumbUrl); entry.thumbUrl = null; }
+  if (entry.tags && entry.tags.cover) {
+    entry.thumbUrl = URL.createObjectURL(new Blob([entry.tags.cover.bytes], { type: entry.tags.cover.mime }));
+    const img = document.createElement('img');
+    img.src = entry.thumbUrl;
+    img.alt = '';
+    entry.thumbWrap.replaceChildren(img);
+  } else {
+    const label = document.createElement('span');
+    label.className = 'pdf-icon';
+    label.textContent = (entry.file.name.match(/\.([a-z0-9]{1,4})$/i)?.[1] || 'AV').toUpperCase();
+    entry.thumbWrap.replaceChildren(label);
+  }
+}
+
+// タグ編集パネル（開いたときに作る）
+function buildTagPanel(entry) {
+  const panel = document.createElement('div');
+  panel.className = 'tag-panel';
+  const id = k => `tag-${entry.id}-${k}`;
+
+  const grid = document.createElement('div');
+  grid.className = 'tag-grid';
+  const inputs = {};
+  for (const [key, label, wide] of TAG_TEXT_FIELDS) { // wide: 'wide'（全幅）/ 'narrow'（1/4幅）
+    const field = document.createElement('div');
+    field.className = 'tag-field' + (wide ? ` ${wide}` : '');
+    const lab = document.createElement('label');
+    lab.htmlFor = id(key);
+    lab.textContent = label;
+    const input = document.createElement('input');
+    input.id = id(key);
+    input.type = 'text';
+    input.autocomplete = 'off';
+    if (key === 'year') { input.inputMode = 'numeric'; input.placeholder = '2024'; }
+    if (key === 'track') { input.inputMode = 'numeric'; input.placeholder = '1 または 1/12'; }
+    if (key === 'genre') input.setAttribute('list', 'genreList');
+    input.addEventListener('input', () => { entry.tags[key] = input.value; });
+    inputs[key] = input;
+    field.append(lab, input);
+    grid.appendChild(field);
+  }
+
+  // ジャケット画像
+  const coverRow = document.createElement('div');
+  coverRow.className = 'cover-row';
+  const preview = document.createElement('div');
+  preview.className = 'cover-preview';
+  const coverText = document.createElement('div');
+  coverText.className = 'cover-text';
+  const coverLabel = document.createElement('div');
+  coverLabel.className = 'cover-label';
+  coverLabel.textContent = 'ジャケット画像';
+  const coverBtns = document.createElement('div');
+  coverBtns.className = 'cover-btns';
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'link-btn';
+  pick.textContent = '画像を選ぶ';
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'link-btn';
+  del.textContent = '外す';
+  const coverInput = document.createElement('input');
+  coverInput.type = 'file';
+  coverInput.accept = 'image/*,.heic,.heif';
+  coverInput.hidden = true;
+  pick.addEventListener('click', () => coverInput.click());
+  coverInput.addEventListener('change', async () => {
+    const f = coverInput.files[0];
+    coverInput.value = '';
+    if (!f) return;
+    try {
+      entry.tags.cover = await normalizeCover(f);
+      refresh();
+      updateCardCover(entry);
+    } catch (e) { showToast(`画像を読み込めませんでした: ${f.name}`); }
+  });
+  del.addEventListener('click', () => { entry.tags.cover = null; refresh(); updateCardCover(entry); });
+  coverBtns.append(pick, del);
+  coverText.append(coverLabel, coverBtns);
+  coverRow.append(preview, coverText, coverInput);
+
+  // アルバム情報をほかの MP3 にもコピー
+  const actions = document.createElement('div');
+  actions.className = 'tag-actions';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'link-btn';
+  copy.textContent = 'アルバム情報をほかの MP3 にも反映';
+  copy.title = 'アーティスト・アルバムアーティスト・アルバム・年・ジャンル・ジャケット画像をコピーします';
+  copy.addEventListener('click', () => {
+    const others = files.filter(e => e !== entry && e.tags && isMp3Target(e.targetFormat));
+    if (!others.length) { showToast('ほかに MP3 に変換するファイルがありません'); return; }
+    for (const o of others) {
+      for (const k of ALBUM_FIELDS) o.tags[k] = entry.tags[k];
+      if (o.refreshTags) o.refreshTags();
+      updateCardCover(o);
+    }
+    showToast(`${others.length} 件のファイルに反映しました`);
+  });
+  actions.appendChild(copy);
+
+  function refresh() {
+    for (const [key] of TAG_TEXT_FIELDS) inputs[key].value = entry.tags[key] || '';
+    preview.replaceChildren();
+    if (entry.tags.cover) {
+      const img = document.createElement('img');
+      img.alt = '';
+      const url = URL.createObjectURL(new Blob([entry.tags.cover.bytes], { type: entry.tags.cover.mime }));
+      img.onload = img.onerror = () => URL.revokeObjectURL(url);
+      img.src = url;
+      preview.appendChild(img);
+      del.hidden = false;
+    } else {
+      preview.textContent = 'なし';
+      del.hidden = true;
+    }
+  }
+  entry.refreshTags = refresh;
+  refresh();
+
+  panel.append(grid, coverRow, actions);
+  return panel;
+}
+
+// ── 動画・音声 → MP3 / WAV ────────────────────────────────
+// 重い動画でもブラウザが固まらないよう、全体を一度にメモリへ読み込まない：
+//   MP4 / MOV … 目次（moov）から音声データの位置だけを調べて少しずつ読み、
+//               WebCodecs でデコード → すぐ MP3 にエンコード（別スレッド）して捨てる。映像部分は読まない。
+//   それ以外  … ブラウザの decodeAudioData でまとめてデコード（大きすぎるファイルは断る）
+// MP3 のエンコードは lamejs（約 150KB）。ffmpeg.wasm（数十MB）は使わない。
+const LAME_URL = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js';
+const loadLame = () => loadLibrary(LAME_URL, 'lamejs', 'MP3エンコーダ');
+// まとめてデコードする方式で扱う上限（これより大きいと PC ごと固まるおそれがある）
+const wholeDecodeLimit = () => IS_IOS ? 200 * 1024 * 1024 : 800 * 1024 * 1024;
+
+async function convertMedia(file, targetFormat, kbps, tags) {
+  // 元が MP3 なら、自前で書かない ID3 フレーム（歌詞など）を引き継ぐ
+  const src = isMp3File(file) ? await readMp3Tags(file) : null;
+  if (targetFormat === 'MP3TAG') {
+    // 再エンコードせず、音声データはそのままでタグだけ差し替える（音質が落ちない）
+    if (!src) throw new Error('MP3 ファイルではありません');
+    return new Blob([buildId3(tags || {}, src.extra), file.slice(src.start, src.end)], { type: 'audio/mpeg' });
+  }
+  reportProgress('音声を読み込み中');
+  const track = isMp4File(file) ? await openMp4AudioTrack(file).catch(e => { console.warn(e); return null; }) : null;
+  const audio = track ? await streamMp4Audio(file, track, targetFormat, kbps)
+                      : await decodeWholeAudio(file, targetFormat, kbps);
+  return targetFormat === 'MP3' && tags ? new Blob([buildId3(tags, src ? src.extra : []), audio], { type: 'audio/mpeg' }) : audio;
+}
+
+// ── 出力先（MP3 / WAV）。write(ch) に Float32Array の配列（L, R）を少しずつ渡す ──
+async function createAudioSink(targetFormat, sampleRate, channels, kbps) {
+  if (targetFormat === 'WAV') return createWavSink(sampleRate, channels);
+  try {
+    return await createMp3WorkerSink(sampleRate, channels, kbps);
+  } catch (e) {
+    console.warn('Worker が使えないため、メインスレッドでエンコードします', e);
+    return createMp3MainSink(sampleRate, channels, kbps, await loadLame());
+  }
+}
+
+// MP3 エンコードは Web Worker（別スレッド）で行い、画面の操作を止めない
+const MP3_WORKER_SRC = `
+let enc = null;
+const parts = [];
+function to16(f) {
+  const o = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++) { const v = f[i] < -1 ? -1 : f[i] > 1 ? 1 : f[i]; o[i] = v < 0 ? v * 0x8000 : v * 0x7FFF; }
+  return o;
+}
+self.onmessage = e => {
+  const m = e.data;
+  try {
+    if (m.type === 'init') {
+      importScripts(m.url);
+      enc = new lamejs.Mp3Encoder(m.channels, m.sampleRate, m.kbps);
+      self.postMessage({ type: 'ready' });
+    } else if (m.type === 'data') {
+      const l = to16(m.ch[0]), r = m.ch[1] ? to16(m.ch[1]) : null;
+      const out = r ? enc.encodeBuffer(l, r) : enc.encodeBuffer(l);
+      if (out.length) parts.push(out);
+      self.postMessage({ type: 'ack' });
+    } else if (m.type === 'end') {
+      const out = enc.flush();
+      if (out.length) parts.push(out);
+      self.postMessage({ type: 'done', blob: new Blob(parts, { type: 'audio/mpeg' }) });
+    }
+  } catch (err) {
+    self.postMessage({ type: 'error', message: String(err && err.message || err) });
+  }
+};`;
+
+function createMp3WorkerSink(sampleRate, channels, kbps) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([MP3_WORKER_SRC], { type: 'text/javascript' }));
+    let worker;
+    try { worker = new Worker(url); } catch (e) { URL.revokeObjectURL(url); reject(e); return; }
+    URL.revokeObjectURL(url);
+    let inFlight = 0, waiters = [], onDone = null, failed = null;
+    const wake = () => { const w = waiters; waiters = []; w.forEach(f => f()); };
+    worker.onerror = e => { e.preventDefault(); failed = new Error('MP3エンコーダを読み込めませんでした（ネットワークを確認してください）'); reject(failed); wake(); };
+    worker.onmessage = e => {
+      const m = e.data;
+      if (m.type === 'ready') resolve(sink);
+      else if (m.type === 'ack') { inFlight--; wake(); }
+      else if (m.type === 'done') { worker.terminate(); onDone && onDone(m.blob); }
+      else if (m.type === 'error') { failed = new Error('MP3 の変換に失敗しました: ' + m.message); reject(failed); wake(); }
+    };
+    const sink = {
+      async write(ch) {
+        // 送りすぎてメモリにたまらないよう、未処理が 4 件を超えたら待つ
+        while (inFlight >= 4 && !failed) await new Promise(r => waiters.push(r));
+        if (failed) throw failed;
+        inFlight++;
+        worker.postMessage({ type: 'data', ch }, ch.map(c => c.buffer));
+      },
+      async end() {
+        while (inFlight > 0 && !failed) await new Promise(r => waiters.push(r));
+        if (failed) throw failed;
+        return new Promise(r => { onDone = r; worker.postMessage({ type: 'end' }); });
+      },
+    };
+    worker.postMessage({ type: 'init', url: LAME_URL, sampleRate, channels, kbps });
+  });
+}
+
+// Worker が使えない環境用（少しずつエンコードして画面に制御を返す）
+function createMp3MainSink(sampleRate, channels, kbps, lame) {
+  const enc = new lame.Mp3Encoder(channels, sampleRate, kbps);
+  const parts = [];
+  const BLOCK = 1152 * 32;
+  return {
+    async write(ch) {
+      const n = ch[0].length;
+      const l16 = new Int16Array(n), r16 = ch[1] ? new Int16Array(n) : null;
+      floatTo16(ch[0], 0, n, l16);
+      if (r16) floatTo16(ch[1], 0, n, r16);
+      for (let i = 0; i < n; i += BLOCK) {
+        const out = r16 ? enc.encodeBuffer(l16.subarray(i, i + BLOCK), r16.subarray(i, i + BLOCK))
+                        : enc.encodeBuffer(l16.subarray(i, i + BLOCK));
+        if (out.length) parts.push(out);
+        await yieldToUI();
+      }
+    },
+    async end() {
+      const out = enc.flush();
+      if (out.length) parts.push(out);
+      return new Blob(parts, { type: 'audio/mpeg' });
+    },
+  };
+}
+
+// 16bit PCM の WAV。少しずつ Blob にしていき、最後にヘッダーを付ける
+function createWavSink(sampleRate, channels) {
+  const parts = [];
+  let frames = 0;
+  // 細かい断片を大量の Blob にすると最後の結合が重いので、約 1MB ごとにまとめる
+  let buf = new Int16Array(512 * 1024), used = 0;
+  const flushBuf = () => { if (used) { parts.push(new Blob([buf.slice(0, used)])); used = 0; } };
+  return {
+    async write(ch) {
+      const n = ch[0].length;
+      for (let i = 0; i < n; i++) {
+        if (used + channels > buf.length) flushBuf();
+        for (let c = 0; c < channels; c++) {
+          const v = Math.max(-1, Math.min(1, ch[c][i]));
+          buf[used++] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+        }
+      }
+      frames += n;
+    },
+    async end() {
+      flushBuf();
+      const dataSize = frames * channels * 2;
+      const h = new DataView(new ArrayBuffer(44));
+      const str = (o, t) => { for (let i = 0; i < t.length; i++) h.setUint8(o + i, t.charCodeAt(i)); };
+      str(0, 'RIFF'); h.setUint32(4, 36 + dataSize, true); str(8, 'WAVE');
+      str(12, 'fmt '); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, channels, true);
+      h.setUint32(24, sampleRate, true); h.setUint32(28, sampleRate * channels * 2, true);
+      h.setUint16(32, channels * 2, true); h.setUint16(34, 16, true);
+      str(36, 'data'); h.setUint32(40, dataSize, true);
+      return new Blob([h.buffer, ...parts], { type: 'audio/wav' });
+    },
+  };
+}
+
+function floatTo16(src, start, n, out) {
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(-1, Math.min(1, src[start + i]));
+    out[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+  }
+}
+
+// AudioData → チャンネルごとの Float32Array
+function audioDataToFloat(ad) {
+  const n = ad.numberOfFrames, chs = ad.numberOfChannels;
+  try {
+    return Array.from({ length: chs }, (_, c) => {
+      const arr = new Float32Array(n);
+      ad.copyTo(arr, { planeIndex: c, format: 'f32-planar' });
+      return arr;
+    });
+  } catch (e) {
+    // 形式の変換に対応していないブラウザ：元の形式のまま取り出して自前で変換
+    const planar = ad.format.endsWith('-planar');
+    const Ctor = { u8: Uint8Array, s16: Int16Array, s32: Int32Array, f32: Float32Array }[ad.format.replace('-planar', '')];
+    const scale = { u8: v => (v - 128) / 128, s16: v => v / 32768, s32: v => v / 2147483648, f32: v => v }[ad.format.replace('-planar', '')];
+    const out = Array.from({ length: chs }, () => new Float32Array(n));
+    if (planar) {
+      for (let c = 0; c < chs; c++) { const a = new Ctor(n); ad.copyTo(a, { planeIndex: c }); for (let i = 0; i < n; i++) out[c][i] = scale(a[i]); }
+    } else {
+      const a = new Ctor(n * chs); ad.copyTo(a, { planeIndex: 0 });
+      for (let i = 0; i < n; i++) for (let c = 0; c < chs; c++) out[c][i] = scale(a[i * chs + c]);
+    }
+    return out;
+  }
+}
+
+// 3ch 以上はステレオにまとめる（5.1ch は L/R にセンター・サラウンドを混ぜる。LFE は使わない）
+function toStereo(ch) {
+  if (ch.length <= 2) return ch;
+  const n = ch[0].length, L = new Float32Array(n), R = new Float32Array(n);
+  if (ch.length >= 6) { // L R C LFE Ls Rs
+    const k = 1 / (1 + 0.707 + 0.707);
+    for (let i = 0; i < n; i++) {
+      L[i] = (ch[0][i] + 0.707 * ch[2][i] + 0.707 * ch[4][i]) * k;
+      R[i] = (ch[1][i] + 0.707 * ch[2][i] + 0.707 * ch[5][i]) * k;
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      let extra = 0;
+      for (let c = 2; c < ch.length; c++) extra += ch[c][i];
+      extra /= (ch.length - 2) * 2;
+      L[i] = (ch[0][i] + extra) / 1.5; R[i] = (ch[1][i] + extra) / 1.5;
+    }
+  }
+  return [L, R];
+}
+
+// MP3 が対応しているサンプリング周波数（それ以外は 48kHz に変換する）
+const MP3_RATES = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
+function resampleLinear(ch, from, to) {
+  if (from === to) return ch;
+  return ch.map(src => {
+    const n = Math.floor(src.length * to / from), out = new Float32Array(n), r = from / to;
+    for (let i = 0; i < n; i++) {
+      const x = i * r, j = Math.floor(x), f = x - j;
+      out[i] = src[j] * (1 - f) + (src[Math.min(j + 1, src.length - 1)]) * f;
+    }
+    return out;
+  });
+}
+
+// ── MP4 / MOV の音声トラックを調べる ──
+// 戻り値: { config（AudioDecoder 用）, offsets, sizes, times(µs) } / 対応していなければ null
+async function openMp4AudioTrack(file) {
+  if (!window.AudioDecoder || !window.EncodedAudioChunk) return null;
+  const moov = await readMoov(file, 256 * 1024 * 1024);
+  if (!moov) return null;
+  const dv = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+
+  for (const trak of boxesOf(moov, 0, moov.length)) {
+    if (trak.type !== 'trak') continue;
+    const mdia = findBox(moov, trak, 'mdia');
+    const hdlr = mdia && findBox(moov, mdia, 'hdlr');
+    if (!hdlr || latin1(moov.subarray(hdlr.s + 8, hdlr.s + 12)) !== 'soun') continue;
+    const mdhd = findBox(moov, mdia, 'mdhd');
+    const timescale = moov[mdhd.s] === 1 ? dv.getUint32(mdhd.s + 20) : dv.getUint32(mdhd.s + 12);
+    const stbl = findBox(moov, findBox(moov, mdia, 'minf'), 'stbl');
+    const stsd = findBox(moov, stbl, 'stsd');
+    const entry = [...boxesOf(moov, stsd.s + 8, stsd.e)][0];
+    if (!entry) return null;
+
+    // サンプルエントリ（チャンネル数・周波数）
+    const sv = dv.getUint16(entry.s + 8);
+    let channels = dv.getUint16(entry.s + 16);
+    let sampleRate = dv.getUint32(entry.s + 24) >>> 16;
+    if (sv === 2) { sampleRate = Math.round(dv.getFloat64(entry.s + 32)); channels = dv.getUint32(entry.s + 40); }
+
+    let codec = null, description;
+    if (entry.type === 'mp4a') {
+      const esds = findBytes(moov, entry.s, entry.e, 'esds');
+      if (!esds) return null;
+      const { oti, asc } = parseEsds(moov.subarray(esds.s + 4, esds.e));
+      if (oti === 0x40 && asc && asc.length >= 2) {
+        let aot = asc[0] >> 3;
+        if (aot === 31) aot = 32 + (((asc[0] & 7) << 3) | (asc[1] >> 5));
+        codec = `mp4a.40.${aot}`;
+        description = asc;
+        const ch = (asc[1] >> 3) & 0x0F; // AudioSpecificConfig のチャンネル設定を優先
+        if (ch >= 1 && ch <= 6) channels = ch; else if (ch === 7) channels = 8;
+      } else if (oti >= 0x66 && oti <= 0x68) { codec = 'mp4a.67'; description = asc; }
+      else if (oti === 0x69 || oti === 0x6B) codec = 'mp3';
+    } else if (entry.type === 'Opus') codec = 'opus';
+    else if (entry.type === '.mp3') codec = 'mp3';
+    if (!codec) return null;
+
+    const config = { codec, sampleRate, numberOfChannels: channels };
+    if (description) config.description = description;
+    const support = await AudioDecoder.isConfigSupported(config).catch(() => ({ supported: false }));
+    if (!support.supported) return null;
+
+    // サンプル（AAC フレーム）ごとのファイル内の位置・サイズ・時刻
+    const stsz = findBox(moov, stbl, 'stsz'), stsc = findBox(moov, stbl, 'stsc');
+    const stco = findBox(moov, stbl, 'stco') || findBox(moov, stbl, 'co64'), stts = findBox(moov, stbl, 'stts');
+    if (!stsz || !stsc || !stco || !stts) return null;
+    const constSize = dv.getUint32(stsz.s + 4), count = dv.getUint32(stsz.s + 8);
+    if (!count) return null; // 断片化 MP4（moof）は非対応 → まとめてデコードへ
+    const sizes = new Uint32Array(count);
+    for (let i = 0; i < count; i++) sizes[i] = constSize || dv.getUint32(stsz.s + 12 + i * 4);
+
+    const is64 = stco.type === 'co64';
+    const chunkCount = dv.getUint32(stco.s + 4);
+    const chunkOffset = c => is64 ? dv.getUint32(stco.s + 8 + c * 8) * 2 ** 32 + dv.getUint32(stco.s + 12 + c * 8)
+                                  : dv.getUint32(stco.s + 8 + c * 4);
+    const scEntries = dv.getUint32(stsc.s + 4);
+    const offsets = new Float64Array(count);
+    let sample = 0;
+    for (let e = 0; e < scEntries && sample < count; e++) {
+      const first = dv.getUint32(stsc.s + 8 + e * 12) - 1;
+      const perChunk = dv.getUint32(stsc.s + 12 + e * 12);
+      const last = e + 1 < scEntries ? dv.getUint32(stsc.s + 8 + (e + 1) * 12) - 1 : chunkCount;
+      for (let c = first; c < last && sample < count; c++) {
+        let off = chunkOffset(c);
+        for (let k = 0; k < perChunk && sample < count; k++) { offsets[sample] = off; off += sizes[sample++]; }
+      }
+    }
+
+    const times = new Float64Array(count);
+    let t = 0, idx = 0;
+    for (let e = 0, n = dv.getUint32(stts.s + 4); e < n && idx < count; e++) {
+      const cnt = dv.getUint32(stts.s + 8 + e * 8), delta = dv.getUint32(stts.s + 12 + e * 8);
+      for (let k = 0; k < cnt && idx < count; k++) { times[idx++] = t * 1e6 / timescale; t += delta; }
+    }
+    return { config, offsets, sizes, times, count };
+  }
+  return null;
+}
+
+// moov ボックスだけを読み込む（映像データは読まない）
+async function readMoov(file, limit) {
+  const read = async (pos, len) => new Uint8Array(await file.slice(pos, pos + len).arrayBuffer());
+  for (let pos = 0; pos + 8 <= file.size;) {
+    const h = await read(pos, 16);
+    let size = u32(h, 0), hdr = 8;
+    const type = latin1(h.subarray(4, 8));
+    if (size === 1) { size = u32(h, 8) * 2 ** 32 + u32(h, 12); hdr = 16; }
+    else if (size === 0) size = file.size - pos;
+    if (size < hdr) return null;
+    if (type === 'moov') return size - hdr > limit ? null : read(pos + hdr, size - hdr);
+    pos += size;
+  }
+  return null;
+}
+
+function* boxesOf(b, s, e) {
+  for (let p = s; p + 8 <= e;) {
+    let size = u32(b, p), hdr = 8;
+    if (size === 1) { size = u32(b, p + 8) * 2 ** 32 + u32(b, p + 12); hdr = 16; }
+    else if (size === 0) size = e - p;
+    if (size < hdr) return;
+    yield { type: latin1(b.subarray(p + 4, p + 8)), s: p + hdr, e: Math.min(e, p + size) };
+    p += size;
+  }
+}
+const findBox = (b, parent, type) => parent && [...boxesOf(b, parent.s, parent.e)].find(x => x.type === type);
+// QuickTime の wave ボックスの中などにある esds を探す
+function findBytes(b, s, e, type) {
+  for (let p = s + 4; p + 4 <= e; p++) {
+    if (b[p] === type.charCodeAt(0) && latin1(b.subarray(p, p + 4)) === type) {
+      const size = u32(b, p - 4);
+      if (size >= 8 && p - 4 + size <= e) return { s: p + 4, e: p - 4 + size };
+    }
+  }
+  return null;
+}
+
+// esds → objectTypeIndication と AudioSpecificConfig
+function parseEsds(b) {
+  let p = 0, oti = 0, asc = null;
+  const len = () => { let n = 0; for (let i = 0; i < 4; i++) { const c = b[p++]; n = (n << 7) | (c & 0x7F); if (!(c & 0x80)) break; } return n; };
+  while (p < b.length) {
+    const tag = b[p++], size = len(), start = p;
+    if (tag === 0x03) { const flags = b[p + 2]; p += 3; if (flags & 0x80) p += 2; if (flags & 0x40) p += 1 + b[p]; if (flags & 0x20) p += 2; continue; }
+    if (tag === 0x04) { oti = b[p]; p += 13; continue; }
+    if (tag === 0x05) { asc = b.slice(p, p + size); break; }
+    p = start + size;
+  }
+  return { oti, asc };
+}
+
+// 音声データを少しずつ読んでデコードし、そのまま出力先へ流す
+async function streamMp4Audio(file, track, targetFormat, kbps) {
+  const { offsets, sizes, times, count } = track;
+  let sink = null, sinkRate = 0, sinkChannels = 0, decodeError = null;
+  const outQueue = [];
+  const decoder = new AudioDecoder({
+    output: ad => outQueue.push(ad),
+    error: e => { decodeError = e; },
+  });
+  decoder.configure(track.config);
+
+  // デコード結果を Float32（チャンネルごと）にして出力先に書く
+  async function drain() {
+    while (outQueue.length) {
+      const ad = outQueue.shift();
+      const rate = ad.sampleRate;
+      let ch;
+      try { ch = audioDataToFloat(ad); } finally { ad.close(); }
+      ch = toStereo(ch);
+      let outRate = rate;
+      if (targetFormat === 'MP3' && !MP3_RATES.includes(rate)) { outRate = 48000; ch = resampleLinear(ch, rate, outRate); }
+      if (!sink) { sinkRate = outRate; sinkChannels = ch.length; sink = await createAudioSink(targetFormat, sinkRate, sinkChannels, kbps); }
+      if (ch.length < sinkChannels) ch = [ch[0], ch[0].slice()]; // 途中でモノラルになった場合
+      await sink.write(ch.slice(0, sinkChannels));
+    }
+  }
+
+  // ファイルを数 MB ずつ読む（近い位置のサンプルはまとめて 1 回で読む）
+  const MAX_READ = 4 * 1024 * 1024, MAX_GAP = 256 * 1024;
+  for (let i = 0; i < count;) {
+    let j = i + 1;
+    const start = offsets[i];
+    let end = start + sizes[i];
+    while (j < count && offsets[j] >= end && offsets[j] - end <= MAX_GAP && offsets[j] + sizes[j] - start <= MAX_READ) {
+      end = offsets[j] + sizes[j]; j++;
+    }
+    const buf = new Uint8Array(await file.slice(start, end).arrayBuffer());
+    for (let k = i; k < j; k++) {
+      const o = offsets[k] - start;
+      decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp: times[k], data: buf.subarray(o, o + sizes[k]) }));
+    }
+    i = j;
+    // デコード待ちがたまりすぎないように待つ
+    while (decoder.decodeQueueSize > 64 && !decodeError) await new Promise(r => setTimeout(r, 5));
+    if (decodeError) throw new Error('音声のデコードに失敗しました: ' + decodeError.message);
+    await drain();
+    reportProgress(`${targetFormat} に変換中 ${Math.floor(i / count * 100)}%`);
+    await yieldToUI();
+  }
+  await decoder.flush();
+  decoder.close();
+  if (decodeError) throw new Error('音声のデコードに失敗しました: ' + decodeError.message);
+  await drain();
+  if (!sink) throw new Error('音声を取り出せませんでした');
+  reportProgress(`${targetFormat} を書き出し中`);
+  return sink.end();
+}
+
+// MP4 以外（WebM・MP3・WAV など）は decodeAudioData でまとめてデコードする
+async function decodeWholeAudio(file, targetFormat, kbps) {
+  if (file.size > wholeDecodeLimit()) {
+    throw new Error(`このファイルは大きすぎるため変換できません（${formatSize(wholeDecodeLimit())} まで。MP4 / MOV ならサイズに関係なく変換できます）`);
+  }
+  const rate = targetFormat === 'MP3' ? 44100 : 48000;
+  let buf;
+  try {
+    buf = await new OfflineAudioContext(1, 1, rate).decodeAudioData(await file.arrayBuffer());
+  } catch (e) {
+    throw new Error('音声を取り出せませんでした（音声が入っていないか、このブラウザでは読めない形式です）');
+  }
+  const all = toStereo(Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c)));
+  const sink = await createAudioSink(targetFormat, rate, all.length, kbps);
+  const STEP = rate * 10; // 10 秒ずつ渡す
+  for (let i = 0; i < all[0].length; i += STEP) {
+    await sink.write(all.map(c => c.slice(i, i + STEP)));
+    reportProgress(`${targetFormat} に変換中 ${Math.floor(Math.min(1, (i + STEP) / all[0].length) * 100)}%`);
+  }
+  return sink.end();
+}
+
+function convertImage(blob, targetFormat, quality) {
+  return withImage(blob, img => {
+    const canvas = newCanvas(img.naturalWidth, img.naturalHeight);
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    return canvasToBlob(canvas, targetFormat, quality).finally(() => releaseCanvas(canvas));
+  });
+}
+
+async function convertSVG(file, targetFormat, quality) {
+  const svgText = await file.text();
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const svg = doc.documentElement;
+  if (doc.getElementsByTagName('parsererror').length || svg.localName !== 'svg') {
+    throw new Error('SVG を解析できませんでした');
+  }
+  // width/height が無い（viewBox のみ・% 指定）SVG はサイズが決まらず、
+  // ブラウザによっては描画できない／縦横比が崩れるので、viewBox から補う
+  const num = v => (v && !/%\s*$/.test(v)) ? parseFloat(v) : NaN;
+  let w = num(svg.getAttribute('width'));
+  let h = num(svg.getAttribute('height'));
+  if (!(w > 0) || !(h > 0)) {
+    const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    const [vw, vh] = (vb.length === 4 && vb[2] > 0 && vb[3] > 0) ? [vb[2], vb[3]] : [800, 600];
+    if (w > 0) h = w * vh / vw;
+    else if (h > 0) w = h * vw / vh;
+    else { w = vw; h = vh; }
+  }
+  w = Math.max(1, Math.round(w));
+  h = Math.max(1, Math.round(h));
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+
+  const blob = new Blob([new XMLSerializer().serializeToString(doc)], { type: 'image/svg+xml' });
+  return withImage(blob, img => {
+    const canvas = newCanvas(w, h);
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    return canvasToBlob(canvas, targetFormat, quality);
+  });
+}
+
+// ── PDF ──────────────────────────────────────────────────
+const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+
+async function openPdf(file) {
+  const lib = getPdfLib();
+  try {
+    return await lib.getDocument({
+      data: await file.arrayBuffer(),
+      // フォントを埋め込んでいない日本語 PDF（よくある）は CMap が無いと文字が描画されない
+      cMapUrl: PDFJS_BASE + 'cmaps/',
+      cMapPacked: true,
+      // 埋め込みなしの欧文標準フォント用
+      standardFontDataUrl: PDFJS_BASE + 'standard_fonts/',
+    }).promise;
+  } catch (e) {
+    if (e && e.name === 'PasswordException') throw new Error('パスワード付きの PDF には対応していません');
+    throw e;
+  }
+}
+
+// canvas の上限（超えると真っ白／失敗する）。iOS は総ピクセル数の上限が小さい
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const MAX_CANVAS_PIXELS = IS_IOS ? 16000000 : 60000000;
+const MAX_CANVAS_SIDE   = IS_IOS ? 4096 * 4 : 16384;
+
+// 1 ページを指定 dpi で描画する。上限を超える場合は収まる dpi まで下げる
+async function renderPdfPage(pdf, pageNo, dpi) {
+  const page = await pdf.getPage(pageNo);
+  const base = page.getViewport({ scale: 1 }); // 1 = 72dpi
+  let scale = dpi / 72;
+  scale = Math.min(scale,
+    Math.sqrt(MAX_CANVAS_PIXELS / (base.width * base.height)),
+    MAX_CANVAS_SIDE / Math.max(base.width, base.height));
+  const viewport = page.getViewport({ scale });
+  const canvas = newCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+  const ctx = canvas.getContext('2d');
+  fillWhite(ctx, canvas.width, canvas.height);
+  await page.render({
+    canvasContext: ctx,
+    viewport,
+    // フォーム入力値も画像に焼き込む（既定ではフォーム欄の中身が描画されない）
+    annotationMode: getPdfLib().AnnotationMode.ENABLE_STORAGE,
+  }).promise;
+  page.cleanup();
+  return { canvas, dpi: Math.round(scale * 72) };
+}
+
+async function convertPDF(file, targetFormat, quality, dpi) {
+  const pdf = await openPdf(file);
+  try {
+    const blobs = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      reportProgress(`${p}/${pdf.numPages} ページ`);
+      const { canvas, dpi: actualDpi } = await renderPdfPage(pdf, p, dpi);
+      if (actualDpi < dpi) reportProgress(`${p}/${pdf.numPages} ページ（大きいページのため ${actualDpi}dpi）`);
+      const blob = await canvasToBlob(canvas, targetFormat, quality);
+      releaseCanvas(canvas);
+      blobs.push(await setImageDpi(blob, actualDpi));
+    }
+    return blobs;
+  } finally {
+    pdf.destroy();
+  }
+}
+
+// ── PDF → EPUB ───────────────────────────────────────────
+async function convertPDFtoEPUB(file, quality, dpi) {
+  const pdf = await openPdf(file);
+  const pages = [];
+  try {
+    for (let p = 1; p <= pdf.numPages; p++) {
+      reportProgress(`${p}/${pdf.numPages} ページ`);
+      const { canvas } = await renderPdfPage(pdf, p, dpi);
+      pages.push(await canvasToJpegPage(canvas, quality));
+      releaseCanvas(canvas);
+    }
+  } finally {
+    pdf.destroy();
+  }
+  const title = file.name.replace(/\.pdf$/i,'');
+  return buildEpubZip(pages, title, 'image/jpeg', 'jpg');
+}
+
+// 解像度（dpi）を画像に書き込む。canvas の出力には dpi 情報が無く、
+// Word や印刷で 72/96dpi 扱いされて巨大に配置されてしまうため。
+async function setImageDpi(blob, dpi) {
+  const a = new Uint8Array(await blob.arrayBuffer());
+  if (blob.type === 'image/jpeg' && a[2] === 0xFF && a[3] === 0xE0 &&
+      String.fromCharCode(a[6], a[7], a[8], a[9]) === 'JFIF') {
+    a[13] = 1;                                  // units = dots per inch
+    a[14] = dpi >> 8; a[15] = dpi & 0xFF;       // X density
+    a[16] = dpi >> 8; a[17] = dpi & 0xFF;       // Y density
+    return new Blob([a], { type: blob.type });
+  }
+  if (blob.type === 'image/png' && String.fromCharCode(a[12], a[13], a[14], a[15]) === 'IHDR') {
+    const ppm = Math.round(dpi / 0.0254);
+    const chunk = new Uint8Array(21);           // length(4) + 'pHYs'(4) + data(9) + crc(4)
+    const dv = new DataView(chunk.buffer);
+    dv.setUint32(0, 9);
+    chunk.set([0x70, 0x48, 0x59, 0x73], 4);     // 'pHYs'
+    dv.setUint32(8, ppm);
+    dv.setUint32(12, ppm);
+    chunk[16] = 1;                              // unit = meter
+    dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+    const ihdrEnd = 8 + 25;                     // signature + IHDR chunk
+    return new Blob([a.subarray(0, ihdrEnd), chunk, a.subarray(ihdrEnd)], { type: blob.type });
+  }
+  return blob;
+}
+
+// ── EPUB → Images (reflow-aware) ─────────────────────────
+async function convertEpubToImages(file, targetFormat, quality) {
+  const { pages } = await renderEpub(file, c => canvasToBlob(c, targetFormat, quality));
+  if (pages.length === 0) throw new Error('EPUB: レンダリング可能なコンテンツが見つかりませんでした');
+  return pages;
+}
+
+// ── EPUB → PDF (reflow-aware) ────────────────────────────
+async function convertEpubToPDF(file, quality) {
+  const { pages, links, outline, isVertical } = await renderEpub(file, c => canvasToJpegPage(c, quality));
+  if (pages.length === 0) throw new Error('EPUB: レンダリング可能なコンテンツが見つかりませんでした');
+  return buildImagePDF(pages, { links, outline, rtl: isVertical });
+}
+
+function parseXml(text) {
+  const doc = new DOMParser().parseFromString(text.replace(/^﻿/, ''), 'application/xml');
+  return doc.getElementsByTagName('parsererror').length ? null : doc;
+}
+
+function safeDecodeURI(s) {
+  try { return decodeURIComponent(s); } catch (e) { return s; }
+}
+
+// ── Core EPUB renderer: spine → { pages, links, outline, isVertical } ──
+// encodePage(canvas) で各ページを変換（Blob 等）し、その結果を pages として返す。
+// 全ページを canvas のまま溜めると 1 ページ約 3.5MB × ページ数のメモリを使うため、
+// 描き終わったページから順にエンコードして canvas を解放する。
+async function renderEpub(file, encodePage) {
+  const zip = await readZip(await file.arrayBuffer());
+
+  const containerXml = decodeZipText(zip, 'META-INF/container.xml');
+  if (!containerXml) throw new Error('EPUB: container.xml が見つかりません');
+  const containerDoc = parseXml(containerXml);
+  const opfPath = containerDoc?.getElementsByTagNameNS('*', 'rootfile')[0]?.getAttribute('full-path')
+    || containerXml.match(/full-path\s*=\s*["']([^"']+)["']/i)?.[1];
+  if (!opfPath) throw new Error('EPUB: OPFパスが不明です');
+  const opfDir = opfPath.includes('/') ? opfPath.replace(/\/[^/]+$/, '') : '';
+
+  const opfXml = decodeZipText(zip, opfPath);
+  if (!opfXml) throw new Error('EPUB: OPFが読めません');
+  const opf = parseXml(opfXml);
+  if (!opf) throw new Error('EPUB: OPFを解析できません');
+
+  // manifest: id → { href, props }
+  const manifest = {};
+  for (const it of opf.getElementsByTagNameNS('*', 'item')) {
+    const id = it.getAttribute('id'), href = it.getAttribute('href');
+    if (id && href) manifest[id] = { href: safeDecodeURI(href), props: it.getAttribute('properties') || '' };
+  }
+
+  const spineIds = [...opf.getElementsByTagNameNS('*', 'itemref')]
+    .filter(r => r.getAttribute('linear') !== 'no')
+    .map(r => r.getAttribute('idref'))
+    .filter(id => manifest[id] && !/\bnav\b/.test(manifest[id].props));
+
+  const xhtmlPaths = spineIds
+    .map(id => normalizePath((opfDir ? opfDir + '/' : '') + manifest[id].href))
+    .filter(p => {
+      const src = decodeZipText(zip, p) || '';
+      return !/<nav[^>]+epub:type\s*=\s*["'][^"']*toc[^"']*["']/i.test(src)
+          && !/<nav[^>]+type\s*=\s*["']toc["']/i.test(src);
+    });
+
+  if (xhtmlPaths.length === 0) throw new Error('EPUB: spineにXHTMLが見つかりません');
+
+  // ── 縦書き判定 ──
+  const ppd = opf.getElementsByTagNameNS('*', 'spine')[0]?.getAttribute('page-progression-direction') || '';
+  const pwm = [...opf.getElementsByTagNameNS('*', 'meta')]
+    .find(m => m.getAttribute('name') === 'primary-writing-mode')?.getAttribute('content') || '';
+  const cssVertical = /writing-mode\s*:\s*(vertical-rl|vertical-lr|tb-rl|tb-lr)/i.test([
+    ...xhtmlPaths.map(p => decodeZipText(zip, p) || ''),
+    ...Object.keys(zip).filter(k => /\.css$/i.test(k)).map(k => decodeZipText(zip, k) || '')
+  ].join('\n'));
+  const sample = xhtmlPaths.slice(0, 5).map(p => decodeZipText(zip, p) || '').join('')
+    .replace(/<[^>]+>/g, '').replace(/\s/g, '');
+  const cjk = (sample.match(/[　-鿿豈-﫿]/g) || []).length;
+  const isCJK = sample.length > 50 && cjk / sample.length > 0.5;
+
+  let isVertical;
+  if (/vertical/i.test(pwm))        isVertical = true;
+  else if (/horizontal/i.test(pwm)) isVertical = false;
+  else if (cssVertical)             isVertical = true;
+  else if (ppd === 'ltr')           isVertical = false; // 明示的に左綴じなら横書き
+  else                              isVertical = isCJK; // rtl / 未指定 → 日本語なら縦書き
+
+  const imgBytes = {};
+  for (const [key, bytes] of Object.entries(zip)) {
+    if (/\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(key)) {
+      imgBytes[key] = bytes;
+      const base = key.split('/').pop();
+      if (!imgBytes[base]) imgBytes[base] = bytes;
+    }
+  }
+
+  // EPUBのタイトルを取得
+  const epubTitle = (opf.getElementsByTagNameNS('*', 'title')[0]?.textContent || 'Contents').trim() || 'Contents';
+
+  const inlineKeys = []; // 行内画像（外字など）。本文中では私用領域の文字 1 つで表す
+  const allBlocks = [];
+  for (const [i, xhtmlPath] of xhtmlPaths.entries()) {
+    reportProgress(`解析中 ${i + 1}/${xhtmlPaths.length}`);
+    await yieldToUI();
+    const src = decodeZipText(zip, xhtmlPath);
+    if (!src) continue;
+    // EPUB リーダーと同じく、各ファイル（たいてい章ごと）は新しいページから始める
+    allBlocks.push({ type: 'pagebreak' }, { type: 'anchor', id: xhtmlPath });
+    allBlocks.push(...extractTextBlocks(src, xhtmlPath, imgBytes, inlineKeys));
+  }
+
+  if (!allBlocks.some(b => b.type !== 'pagebreak' && b.type !== 'anchor')) {
+    throw new Error('EPUB: テキストを抽出できませんでした');
+  }
+
+  const PAGE_W = 794;
+  const PAGE_H = 1123;
+  const MARGIN = 60;
+
+  // 本文用の Web フォント（標準と太字）を先に読み込む。太字が使えなければ擬似太字にする
+  const chars = [...new Set([epubTitle, '目次0123456789…〓',
+    ...allBlocks.map(b => (b.text || '') + (b.ruby || []).map(r => r.rt).join(''))].join(''))].join('');
+  fakeBold = !(await loadCanvasFonts(isVertical ? 'Noto Serif JP' : 'Noto Sans JP', chars));
+
+  // 外字画像は小さな canvas にして保持する（読み込んだ <img> は後で描くまでにデコード結果が破棄されることがある）
+  const glyphCache = {};
+  const inlineImgs = await Promise.all(inlineKeys.map(k => glyphCache[k] ??= loadInlineGlyph(imgBytes[k])));
+
+  // 描き終わったページを受け取ってエンコードする。エンコード（toBlob は別スレッド）と
+  // 次ページの描画を並行させつつ、同時に抱える canvas は数枚に抑える。
+  const encoded = [];
+  const inflight = [];
+  const encodeAndRelease = canvas => {
+    const p = encodePage(canvas).finally(() => releaseCanvas(canvas));
+    p.catch(() => {}); // エラーは Promise.all 側で拾う
+    return p;
+  };
+  const emit = async canvas => {
+    const p = encodeAndRelease(canvas);
+    encoded.push(p);
+    inflight.push(p);
+    if (inflight.length >= 3) await inflight.shift();
+    reportProgress(`${encoded.length} ページ目を描画`);
+    await yieldToUI();
+  };
+
+  // レンダリング（見出し・リンク・アンカー位置付き）
+  const env = { W: PAGE_W, H: PAGE_H, M: MARGIN, imgBytes, inlineImgs, emit };
+  const { toc, links, anchors } = isVertical
+    ? await renderBlocksVertical(allBlocks, env)
+    : await renderBlocksHorizontal(allBlocks, env);
+  const contentPages = await Promise.all(encoded);
+
+  // 目次ページを先頭に作成（tocエントリがある場合のみ。長い目次は複数ページになる）
+  let tocPages = [];
+  const allLinks = [];
+  if (toc.length > 0) {
+    const { canvases: tocCanvases, linkRects } = buildTocCanvases(epubTitle, toc, PAGE_W, PAGE_H, MARGIN, isVertical);
+    tocPages = await Promise.all(tocCanvases.map(encodeAndRelease));
+    linkRects.forEach((r, j) => allLinks.push({ page: r.page, rect: r, dest: toc[j].pageIndex + tocPages.length }));
+  }
+  const offset = tocPages.length; // 目次ページの分だけページ番号がずれる
+
+  // 本文中のリンク（本に含まれている目次ページなど）をページ番号に解決する
+  for (const l of links) {
+    const at = { page: l.page + offset, rect: l.rect };
+    if (l.uri) allLinks.push({ ...at, uri: l.uri });
+    else {
+      const dest = anchors[l.target] ?? anchors[l.target.split('#')[0]];
+      if (dest !== undefined) allLinks.push({ ...at, dest: dest + offset });
+    }
+  }
+
+  const outline = toc.map(e => ({ title: e.text, level: e.level, page: e.pageIndex + offset }));
+  return { pages: [...tocPages, ...contentPages], links: allLinks, outline, isVertical };
+}
+
+// 太字を擬似的に描くかどうか（太字の Web フォントが読み込めなかったとき true）
+let fakeBold = false;
+
+// canvas で使う Web フォント（標準・太字）を、本に出てくる文字の分だけ読み込む。
+// 太字の字形が使えるようになったら true を返す
+async function loadCanvasFonts(family, text) {
+  if (!document.fonts) return false;
+  try {
+    await Promise.all([
+      document.fonts.load(`400 20px '${family}'`, text),
+      document.fonts.load(`700 20px '${family}'`, text),
+    ]);
+  } catch (e) { /* オフライン等：システムフォントで描画 */ }
+  return [...document.fonts].some(f =>
+    f.family.replace(/["']/g, '') === family && f.weight === '700' && f.status === 'loaded');
+}
+
+// fillText の代わりに使う。太字フォントが無い環境では輪郭を重ねて太字に見せる
+function fillTextB(ctx, text, x, y) {
+  ctx.fillText(text, x, y);
+  if (fakeBold && /\bbold\b|\b[6-9]00\b/.test(ctx.font)) {
+    const fs = parseFloat((ctx.font.match(/([\d.]+)px/) || [])[1] || 16);
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = fs * 0.05;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.restore();
+  }
+}
+
+// 行内画像（外字）用の私用領域文字
+const PUA_BASE = 0xF0000;
+const PUA_RE = /[\u{F0000}-\u{FFFFD}]/gu;
+const inlineIndex = ch => { const c = ch.codePointAt(0); return c >= PUA_BASE && c <= 0xFFFFD ? c - PUA_BASE : -1; };
+const plainText = s => s.replace(PUA_RE, '〓'); // 目次・しおり用
+
+async function loadInlineGlyph(bytes) {
+  const img = await loadImgFromBytes(bytes);
+  if (!img) return null;
+  const s = Math.min(1, 128 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = newCanvas(Math.max(1, Math.round(img.naturalWidth * s)), Math.max(1, Math.round(img.naturalHeight * s)));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
+// 外字画像を 1 文字分の正方形に収めて描く
+function drawInlineImage(ctx, img, x, top, size) {
+  if (!img) return;
+  const s = Math.min(size / img.width, size / img.height);
+  const w = img.width * s, h = img.height * s;
+  ctx.drawImage(img, x + (size - w) / 2, top + (size - h) / 2, w, h);
+}
+
+// ── 目次ページ Canvas を生成 ──────────────────────────────
+// 戻り値: { canvases, linkRects }  linkRects[j] = { page, x, y, w, h }（canvas 座標）
+function buildTocCanvases(title, toc, W, H, M, isVertical) {
+  const linkRects = [];
+  let canvases;
+
+  if (isVertical) {
+    // 縦書き目次：右端に書名、次の列に「目次」、以降 1 列 1 項目
+    const FONT_TITLE = 26;
+    const FONT_ITEM  = 20;
+    const TITLE_COL  = Math.round(FONT_TITLE * 2.4);
+    const ITEM_COL   = Math.round(FONT_ITEM * 2.4);
+    const contentH = H - M * 2;
+
+    // 1 パス目：各項目の配置（ページと列の右端）を決める
+    const layout = [];
+    let page = 0;
+    let right = W - M - TITLE_COL - ITEM_COL;
+    for (let j = 0; j < toc.length; j++) {
+      if (right - ITEM_COL < M) { page++; right = W - M; }
+      layout.push({ page, right });
+      right -= ITEM_COL;
+    }
+    const pageCount = page + 1;
+    canvases = Array.from({ length: pageCount }, () => blankCanvas(W, H));
+
+    const ctx0 = canvases[0].getContext('2d');
+    // 書名
+    const titleAdv = Math.round(FONT_TITLE * 1.1);
+    drawVerticalString(ctx0, title, W - M - TITLE_COL / 2, M, FONT_TITLE, true, '#111',
+      Math.floor(contentH / titleAdv));
+    // 「目次」ラベル
+    drawVerticalString(ctx0, '目次', W - M - TITLE_COL - ITEM_COL / 2, M, FONT_ITEM, false, '#666');
+
+    // 2 パス目：各 TOC エントリ
+    toc.forEach((entry, j) => {
+      const { page: pg, right: r } = layout[j];
+      const ctx = canvases[pg].getContext('2d');
+      const fs = entry.level === 1 ? FONT_ITEM : Math.round(FONT_ITEM * 0.85);
+      const adv = Math.round(fs * 1.1);
+      const indent = (Math.min(entry.level, 4) - 1) * Math.round(fs * 0.5);
+      const cx = r - ITEM_COL / 2;
+      const numFs = Math.round(fs * 0.75);
+      const maxChars = Math.floor((contentH - indent - numFs * 2) / adv);
+
+      drawVerticalString(ctx, entry.text, cx, M + indent, fs, entry.level === 1, '#1a5fa8', maxChars);
+
+      // ページ番号（列の下端）
+      ctx.save();
+      ctx.font = `${numFs}px 'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif`;
+      ctx.fillStyle = '#888';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(String(entry.pageIndex + pageCount + 1), cx, H - M);
+      ctx.restore();
+
+      linkRects[j] = { page: pg, x: r - ITEM_COL, y: M, w: ITEM_COL, h: contentH };
+    });
+  } else {
+    // 横書き目次
+    const FONT_TITLE = 28;
+    const FONT_ITEM  = 18;
+    const contentW = W - M * 2;
+    const firstY = M + 20 + FONT_TITLE * 2.2 + 16 * 2.5;
+
+    // 1 パス目：レイアウト
+    const layout = [];
+    let page = 0;
+    let y = firstY;
+    for (const entry of toc) {
+      const fs = entry.level === 1 ? FONT_ITEM : Math.round(FONT_ITEM * 0.85);
+      const lineH = Math.round(fs * 1.9);
+      if (y + lineH > H - M) { page++; y = M; }
+      layout.push({ page, y, fs, lineH });
+      y += lineH;
+    }
+    const pageCount = page + 1;
+    canvases = Array.from({ length: pageCount }, () => blankCanvas(W, H));
+
+    const ctx0 = canvases[0].getContext('2d');
+    ctx0.textBaseline = 'alphabetic';
+    ctx0.font = `bold ${FONT_TITLE}px 'Noto Sans JP',sans-serif`;
+    ctx0.fillStyle = '#111';
+    fillTextB(ctx0, fitText(ctx0, title, contentW), M, M + 20 + FONT_TITLE);
+    ctx0.font = `16px 'Noto Sans JP',sans-serif`;
+    ctx0.fillStyle = '#666';
+    ctx0.fillText('目　次', M, M + 20 + FONT_TITLE * 2.2 + 16);
+
+    toc.forEach((entry, j) => {
+      const { page: pg, y: ly, fs, lineH } = layout[j];
+      const ctx = canvases[pg].getContext('2d');
+      ctx.textBaseline = 'alphabetic';
+      const indent = (Math.min(entry.level, 4) - 1) * 24;
+
+      // ページ番号（右揃え）
+      const pageNum = String(entry.pageIndex + pageCount + 1);
+      ctx.font = `${Math.round(fs * 0.8)}px 'Noto Sans JP',sans-serif`;
+      const numW = ctx.measureText(pageNum).width;
+      ctx.fillStyle = '#888';
+      ctx.fillText(pageNum, W - M - numW, ly + fs);
+
+      // 見出し（ページ番号と重ならないよう切り詰め）
+      ctx.font = `${entry.level === 1 ? 'bold ' : ''}${fs}px 'Noto Sans JP',sans-serif`;
+      ctx.fillStyle = '#1a5fa8';
+      const text = fitText(ctx, entry.text, contentW - indent - numW - 24);
+      fillTextB(ctx, text, M + indent, ly + fs);
+
+      // 点線リーダー
+      const textW = ctx.measureText(text).width;
+      const x1 = M + indent + textW + 8, x2 = W - M - numW - 8;
+      if (x2 > x1) {
+        ctx.save();
+        ctx.setLineDash([1, 4]);
+        ctx.strokeStyle = '#bbb';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x1, ly + fs - 4);
+        ctx.lineTo(x2, ly + fs - 4);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      linkRects[j] = { page: pg, x: M + indent, y: ly, w: contentW - indent, h: lineH };
+    });
+  }
+
+  return { canvases, linkRects };
+}
+
+// 幅に収まらない文字列を「…」で切り詰める
+function fitText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  const chars = [...text];
+  let lo = 0, hi = chars.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(chars.slice(0, mid).join('') + '…').width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return chars.slice(0, lo).join('') + '…';
+}
+
+function normalizePath(p) {
+  const parts = p.split('/');
+  const out = [];
+  for (const part of parts) {
+    if (part === '..') out.pop();
+    else if (part !== '.' && part !== '') out.push(part);
+  }
+  return out.join('/');
+}
+
+// ── Extract structured text blocks from XHTML ─────────────
+// 段落ブロック: { type: 'para', text, ruby: [{ from, to, rt }], links: [{ from, to, target | uri }], ids }
+//   from / to は text 内のコードポイント位置。行内画像（外字）は私用領域の 1 文字で text に入る。
+function extractTextBlocks(src, xhtmlPath, imgBytes, inlineKeys) {
+  const cleaned = src
+    .replace(/^﻿/, '')
+    .replace(/^<\?xml[^>]*\?>\s*/i, '')
+    .replace(/<!DOCTYPE[^>]*>/gi, '');
+
+  // まず XHTML として解釈（<a id="x"/> のような自己終了タグを正しく扱える）。
+  // &nbsp; などで XML として壊れている場合は HTML として解釈する。
+  const parser = new DOMParser();
+  let doc = parser.parseFromString(cleaned, 'application/xhtml+xml');
+  if (doc.getElementsByTagName('parsererror').length) doc = parser.parseFromString(cleaned, 'text/html');
+  const body = doc.body || doc.getElementsByTagNameNS('*', 'body')[0] || doc.documentElement;
+
+  const blocks = [];
+  const xhtmlDir = xhtmlPath.includes('/') ? xhtmlPath.replace(/\/[^/]+$/, '') : '';
+
+  const SKIP_TAGS  = new Set(['head','title','script','style','rt','rp','rtc']);
+  const BLOCK_TAGS = new Set(['p','li','td','th','blockquote','dt','dd','dl','caption','figcaption','address',
+    'body','section','article','main','div','ul','ol','table','tbody','thead','tfoot','tr','figure',
+    'nav','aside','header','footer','details','summary','svg']);
+  const BLOCK_SELECTOR = 'p,div,section,article,h1,h2,h3,h4,h5,h6,li,blockquote,table,ul,ol,dl,figure,pre,hr';
+
+  const tagOf = el => (el.localName || el.tagName || '').toLowerCase();
+  const cpLen = s => [...s].length;
+
+  function resolveImg(rawSrc) {
+    if (!rawSrc) return null;
+    rawSrc = safeDecodeURI(rawSrc.split('#')[0].split('?')[0]);
+    // 1. Exact normalized path
+    const resolved = normalizePath((xhtmlDir ? xhtmlDir + '/' : '') + rawSrc);
+    if (imgBytes[resolved]) return resolved;
+    // 2. basename only
+    const base = rawSrc.split('/').pop();
+    if (imgBytes[base]) return base;
+    // 3. Partial suffix match
+    const found = Object.keys(imgBytes).find(k => k.endsWith('/' + base) || k === base);
+    return found || null;
+  }
+
+  const imgSrcOf = el => el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('xlink:href')
+    || el.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
+
+  function pushImage(el) {
+    const key = resolveImg(imgSrcOf(el));
+    if (key) blocks.push({ type: 'image', key });
+  }
+
+  // リンク先: 本の中なら "パス#id"、外部なら uri
+  function resolveHref(href) {
+    if (!href) return null;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return /^(https?|mailto):/i.test(href) ? { uri: href } : null;
+    const [p, frag] = href.split('#');
+    const path = p ? normalizePath((xhtmlDir ? xhtmlDir + '/' : '') + safeDecodeURI(p.split('?')[0])) : xhtmlPath;
+    return { target: frag ? `${path}#${safeDecodeURI(frag)}` : path };
+  }
+
+  const idOf = el => {
+    const id = el.getAttribute('id') || (tagOf(el) === 'a' ? el.getAttribute('name') : null);
+    return id ? `${xhtmlPath}#${id}` : null;
+  };
+
+  function getTextWithoutRuby(node) {
+    // Collect text from node, skipping <rt> and <rp> (furigana)
+    let text = '';
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE || child.nodeType === Node.CDATA_SECTION_NODE) {
+        text += child.textContent;
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        if (SKIP_TAGS.has(tagOf(child))) continue; // skip furigana
+        text += getTextWithoutRuby(child);
+      }
+    }
+    return text;
+  }
+
+  // ── 段落バッファ ──
+  // テキストは段落単位でためて、ブロック要素の境界や <br> で確定する。
+  // HTML と同じく空白類は 1 つにまとめる（全角スペースは字下げなので残す）。
+  let text = '', len = 0, ruby = [], links = [], ids = [];
+
+  function append(t) {
+    t = t.replace(/[ \t\r\n\f]+/g, ' ');
+    if ((len === 0 || text.endsWith(' ')) && t.startsWith(' ')) t = t.slice(1);
+    if (!t) return;
+    text += t;
+    len += cpLen(t);
+  }
+  function appendRaw(t) { text += t; len += cpLen(t); }
+
+  // バッファを取り出してブロックにする（空なら null）
+  function take(type, extra = {}) {
+    while (text.endsWith(' ')) { text = text.slice(0, -1); len--; }
+    const clip = r => ({ ...r, to: Math.min(r.to, len) });
+    const block = text
+      ? { type, text, ruby: ruby.map(clip).filter(r => r.to > r.from), links: links.map(clip).filter(r => r.to > r.from), ids, ...extra }
+      : null;
+    if (!block) ids.forEach(id => blocks.push({ type: 'anchor', id }));
+    text = ''; len = 0; ruby = []; links = []; ids = [];
+    return block;
+  }
+  function flush() {
+    const b = take('para');
+    if (b) blocks.push(b);
+    return !!b;
+  }
+  // <br>：文字があればそこで改行、無ければ（連続した <br> など）空行。
+  // 見出しの中の <br>（「第一章<br/>出発」など）は見出しを分けずに空白にする
+  let inHeading = 0;
+  function lineBreak() {
+    if (inHeading) { append(' '); return; }
+    if (!flush()) blocks.push({ type: 'br' });
+  }
+
+  // 外字などの行内画像か（文中に置かれた画像は、本文と同じ大きさの 1 文字として扱う）
+  function isInlineImage(el) {
+    if (/gaiji/i.test(el.getAttribute('class') || '')) return true;
+    if (/(^|;)\s*(height|width)\s*:\s*[\d.]+\s*em/i.test(el.getAttribute('style') || '')) return true;
+    if (text.replace(/[\s　]/g, '')) return true; // 前に同じ段落の文字がある
+    for (let n = el.nextSibling; n; n = n.nextSibling) {  // 後ろに同じ段落の文字がある
+      if (n.nodeType === Node.TEXT_NODE) { if (n.textContent.trim()) return true; continue; }
+      if (n.nodeType !== Node.ELEMENT_NODE) continue;
+      const t = tagOf(n);
+      if (t === 'br' || BLOCK_TAGS.has(t) || /^h[1-6]$/.test(t)) return false;
+      if (n.textContent.trim()) return true;
+    }
+    return false;
+  }
+  function inlineImageChar(el) {
+    const key = resolveImg(imgSrcOf(el));
+    if (!key) return (el.getAttribute('alt') || '').trim() || '〓';
+    return String.fromCodePoint(PUA_BASE + inlineKeys.push(key) - 1);
+  }
+
+  // <ruby>漢字<rt>かんじ</rt></ruby> / <ruby><rb>漢</rb><rt>かん</rt>…</ruby> の両方に対応
+  function walkRuby(el) {
+    let base = '';
+    const commit = rt => {
+      const b = base.replace(/[ \t\r\n\f]+/g, '');
+      base = '';
+      if (!b) return;
+      const from = len;
+      appendRaw(b);
+      const r = rt.replace(/\s+/g, '');
+      if (r) ruby.push({ from, to: len, rt: r });
+    };
+    for (const c of el.childNodes) {
+      if (c.nodeType === Node.TEXT_NODE || c.nodeType === Node.CDATA_SECTION_NODE) { base += c.textContent; continue; }
+      if (c.nodeType !== Node.ELEMENT_NODE) continue;
+      const t = tagOf(c);
+      if (t === 'rp') continue;
+      if (t === 'rt') { commit(getTextWithoutRuby(c) || c.textContent); continue; }
+      if (t === 'rtc') { commit(c.textContent); continue; }
+      if (t === 'img' || t === 'image') { base += inlineImageChar(c); continue; }
+      base += getTextWithoutRuby(c); // rb, span など
+    }
+    commit('');
+  }
+
+  function walk(node) {
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE || child.nodeType === Node.CDATA_SECTION_NODE) {
+        append(child.textContent);
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = tagOf(child);
+      if (SKIP_TAGS.has(tag)) continue;
+
+      if (tag === 'br') { lineBreak(); continue; }
+      if (tag === 'ruby') { walkRuby(child); continue; }
+      if (tag === 'img' || tag === 'image') {
+        if (isInlineImage(child)) appendRaw(inlineImageChar(child));
+        else { flush(); pushImage(child); }
+        continue;
+      }
+      if (tag === 'hr') { flush(); blocks.push({ type: 'hr' }); continue; }
+
+      const id = idOf(child);
+
+      if (/^h[1-6]$/.test(tag)) {
+        flush();
+        if (id) ids.push(id);
+        inHeading++;
+        walk(child);
+        inHeading--;
+        const h = take('heading', { level: parseInt(tag[1]) });
+        if (h) blocks.push(h);
+        continue;
+      }
+
+      if (tag === 'pre') {
+        flush();
+        if (id) blocks.push({ type: 'anchor', id });
+        const t = getTextWithoutRuby(child).replace(/^\r?\n|\r?\n$/g, '');
+        if (t.trim()) blocks.push({ type: 'pre', text: t });
+        continue;
+      }
+
+      if (BLOCK_TAGS.has(tag) || child.querySelector(BLOCK_SELECTOR)) {
+        flush();
+        if (id) blocks.push({ type: 'anchor', id });
+        walk(child);
+        flush();
+        continue;
+      }
+
+      // インライン要素（span, a, em など）：段落の続きとして読む
+      if (id) ids.push(id);
+      const link = tag === 'a' ? resolveHref(child.getAttribute('href') || child.getAttribute('xlink:href')) : null;
+      const from = len;
+      walk(child);
+      if (link && len > from) links.push({ from, to: len, ...link });
+    }
+  }
+
+  walk(body);
+  flush();
+  return blocks;
+}
+
+// ── Horizontal (yokogumi) renderer ────────────────────────
+async function renderBlocksHorizontal(blocks, { W, H, M, imgBytes, inlineImgs, emit }) {
+  const canvases = [];
+  const toc = [];
+  const links = [];   // { page, rect, target | uri }
+  const anchors = {}; // id → page
+
+  // 描き終わったページはすぐ emit（エンコード）して手放す
+  let flushed = 0;
+  async function flushPages() {
+    while (flushed < canvases.length) {
+      const c = canvases[flushed];
+      canvases[flushed++] = null;
+      await emit(c);
+    }
+  }
+
+  let canvas = newCanvas(W, H);
+  let ctx = canvas.getContext('2d');
+  fillWhite(ctx, W, H);
+  let y = M;
+  const contentW = W - M * 2;
+  const BASE_SIZE = 16;
+  const LINE = 1.65;            // 行送り（文字サイズに対する倍率。ルビはこの行間に入る）
+  const SANS = "'Noto Sans JP', sans-serif";
+  const fontOf = (fs, bold, family = SANS) => `${bold ? 'bold ' : ''}${fs}px ${family}`;
+
+  function newPage() { canvases.push(canvas); canvas = newCanvas(W, H); ctx = canvas.getContext('2d'); fillWhite(ctx, W, H); y = M; }
+  function ensureSpace(n) { if (y + n > H - M && y > M) newPage(); }
+
+  // 行内画像は全角 1 文字分の幅として測る
+  const mw = s => ctx.measureText(s.replace(PUA_RE, '　')).width;
+  const LATIN = /[\x21-\x7EÀ-ɏ]/;
+  const NO_LINE_START = /^[、。，．,.)）」』】〕〉》！？!?ー・：；ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ]$/;
+
+  // 段落を行に分ける。英単語とルビ付きの語は途中で改行しない。行頭禁則は「ぶら下げ」で処理
+  function layoutLines(cps, ruby, maxW) {
+    const rubyAt = new Map(ruby.map(r => [r.from, r.to]));
+    const tokens = [];
+    for (let i = 0; i < cps.length;) {
+      let e = i + 1;
+      if (rubyAt.has(i)) e = rubyAt.get(i);
+      else if (LATIN.test(cps[i])) { while (e < cps.length && LATIN.test(cps[e]) && !rubyAt.has(e)) e++; }
+      else if (cps[i] === ' ') { while (e < cps.length && cps[e] === ' ' && !rubyAt.has(e)) e++; }
+      tokens.push([i, e]);
+      i = e;
+    }
+    const str = (a, b) => cps.slice(a, b).join('');
+    const lines = [];
+    let ls = 0, le = 0;
+    for (const [s, e] of tokens) {
+      const tok = str(s, e);
+      if (le === ls && tok.trim() === '' && tok !== '　' && lines.length) { ls = le = e; continue; } // 行頭の空白
+      if (mw(str(ls, e)) <= maxW) { le = e; continue; }
+      if (le > ls && NO_LINE_START.test(tok)) { le = e; continue; }
+      if (le > ls) {
+        lines.push([ls, le]);
+        ls = le = s;
+        if (tok.trim() === '' && tok !== '　') { ls = le = e; continue; }
+        if (mw(tok) <= maxW) { le = e; continue; }
+      }
+      // 1 行に収まらない長い語は文字単位で分割
+      for (let k = s; k < e; k++) {
+        if (le > ls && mw(str(ls, k + 1)) > maxW) { lines.push([ls, le]); ls = le = k; }
+        le = k + 1;
+      }
+    }
+    if (le > ls) lines.push([ls, le]);
+    return lines;
+  }
+
+  // 段落（見出し）を描く。ルビは行間（文字の上）に、行内画像は 1 文字分の大きさで描く
+  function drawPara(block, fs, bold, color, family = SANS, indentX = 0) {
+    const font = fontOf(fs, bold, family);
+    ctx.font = font;
+    const cps = [...block.text];
+    const ruby = block.ruby || [];
+    const lineH = fs * LINE;
+    let first = true;
+    for (const [a, b] of layoutLines(cps, ruby, contentW - indentX)) {
+      ensureSpace(lineH);
+      if (first) { (block.ids || []).forEach(id => { anchors[id] = canvases.length; }); first = false; }
+      ctx.font = font; // newPage で ctx が新しくなるので毎回設定する
+      ctx.fillStyle = color;
+      const x0 = M + indentX;
+      const baseline = y + (LINE - 1) * fs + fs * 0.88;
+      const glyphTop = baseline - fs * 0.88;
+      const xAt = k => x0 + mw(cps.slice(a, k).join(''));
+
+      // 本文（行内画像の位置で区切って描く）
+      let runStart = a;
+      for (let k = a; k <= b; k++) {
+        const idx = k < b ? inlineIndex(cps[k]) : -1;
+        if (k === b || idx >= 0) {
+          if (k > runStart) fillTextB(ctx, cps.slice(runStart, k).join(''), xAt(runStart), baseline);
+          if (idx >= 0) drawInlineImage(ctx, inlineImgs[idx], xAt(k), glyphTop, fs);
+          runStart = k + 1;
+        }
+      }
+
+      // ルビ
+      for (const r of ruby) {
+        if (r.to <= a || r.from >= b) continue;
+        const bx0 = xAt(Math.max(r.from, a)), bx1 = xAt(Math.min(r.to, b));
+        const rs = Math.round(fs * 0.5);
+        ctx.font = fontOf(rs, false, family);
+        const rw = ctx.measureText(r.rt).width;
+        fillTextB(ctx, r.rt, Math.max(M - rs, (bx0 + bx1) / 2 - rw / 2), glyphTop - fs * 0.1);
+        ctx.font = font;
+      }
+
+      // リンクの範囲
+      for (const l of block.links || []) {
+        if (l.to <= a || l.from >= b) continue;
+        const lx0 = xAt(Math.max(l.from, a)), lx1 = xAt(Math.min(l.to, b));
+        links.push({ page: canvases.length, rect: { x: lx0, y, w: lx1 - lx0, h: lineH }, target: l.target, uri: l.uri });
+      }
+      y += lineH;
+    }
+  }
+
+  for (const block of blocks) {
+    await flushPages();
+    if (block.type === 'pagebreak') {
+      if (y > M) newPage();
+    } else if (block.type === 'anchor') {
+      anchors[block.id] = canvases.length;
+    } else if (block.type === 'heading') {
+      const sz = [0,24,20,18,16,16,16][block.level] || 16;
+      // 見出しだけがページ末尾に残らないよう、見出し＋本文 2 行が入らなければ改ページ
+      ctx.font = fontOf(sz, true);
+      const hLines = layoutLines([...block.text], block.ruby || [], contentW).length;
+      ensureSpace(sz * 0.6 + hLines * sz * LINE + sz * 0.4 + BASE_SIZE * LINE * 2);
+      if (y > M) y += sz * 0.6;
+      toc.push({ text: plainText(block.text), level: block.level, pageIndex: canvases.length });
+      drawPara(block, sz, true, '#111');
+      y += sz * 0.4;
+    } else if (block.type === 'para') {
+      drawPara(block, BASE_SIZE, false, '#222');
+      y += BASE_SIZE * 0.2;
+    } else if (block.type === 'pre') {
+      for (const line of block.text.split('\n')) {
+        if (line.trim()) drawPara({ text: line }, 12, false, '#333', 'monospace', 8);
+        else { ensureSpace(12 * LINE); y += 12 * LINE; }
+      }
+      y += BASE_SIZE * 0.2;
+    } else if (block.type === 'hr') {
+      ensureSpace(20); ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(M, y+10); ctx.lineTo(W-M, y+10); ctx.stroke(); y += 20;
+    } else if (block.type === 'br') {
+      ensureSpace(BASE_SIZE * LINE);
+      y += BASE_SIZE * LINE; // 空行
+    } else if (block.type === 'image') {
+      const img = await loadImgFromBytes(imgBytes[block.key]);
+      if (!img) continue;
+      let iw = img.naturalWidth, ih = img.naturalHeight;
+      const maxW = contentW, maxH = H - M * 2;
+      if (iw > maxW) { ih = ih * maxW / iw; iw = maxW; }
+      if (ih > maxH) { iw = iw * maxH / ih; ih = maxH; }
+      ensureSpace(ih + 16);
+      ctx.drawImage(img, M + (contentW - iw) / 2, y, iw, ih);
+      y += ih + 16;
+    }
+  }
+  if (y > M) canvases.push(canvas);
+  if (canvases.length === 0) canvases.push(blankCanvas(W, H));
+  await flushPages();
+  return { toc, links, anchors };
+}
+
+// ── 縦書き用グリフ描画（本文・目次で共通） ────────────────
+// 90°回転する記号（長音符・ダッシュ・リーダー・括弧類）
+const V_ROTATE = new Set('ーｰ―─‐–—…‥〜～「」『』【】〔〕（）｛｝〈〉《》［］＝()[]{}<>=-');
+// 句読点：右上に寄せる
+const V_PUNCT  = new Set('、。，．');
+// 小書き仮名：少し右上に寄せる
+const V_SMALL  = new Set('ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ');
+
+// cx = 列の中心 x, top = 文字セル上端 y。フォント・色は呼び出し側で設定済みのものを使う
+function drawVGlyph(ctx, ch, cx, top, fs) {
+  ctx.save();
+  if (V_ROTATE.has(ch)) {
+    ctx.translate(cx, top + fs / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fillTextB(ctx, ch, 0, 0);
+  } else if (V_PUNCT.has(ch)) {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    fillTextB(ctx, ch, cx - fs * 0.05, top + fs * 0.35);
+  } else {
+    const dx = V_SMALL.has(ch) ? fs * 0.1 : 0;
+    const dy = V_SMALL.has(ch) ? -fs * 0.1 : 0;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    fillTextB(ctx, ch, cx + dx, top + fs * 0.88 + dy);
+  }
+  ctx.restore();
+}
+
+function verticalFont(fs, bold) {
+  return `${bold ? 'bold ' : ''}${fs}px 'Noto Serif JP','Hiragino Mincho ProN','Yu Mincho','MS Mincho',serif`;
+}
+
+// 半角英数字の連続は、3 文字以下なら縦中横（tcy）、それより長ければ 90° 回転（rot）
+function segmentVertical(text) {
+  const segs = [];
+  for (const m of text.matchAll(/[\x21-\x7E]+(?: [\x21-\x7E]+)*|[\s\S]/gu)) {
+    const t = m[0];
+    if (!/^[\x21-\x7E]/.test(t) || (t.length === 1 && V_ROTATE.has(t))) segs.push({ text: t, kind: 'char' });
+    else if (t.length <= 3) segs.push({ text: t, kind: 'tcy' });
+    else segs.push({ text: t, kind: 'rot' });
+  }
+  return segs;
+}
+
+// 縦中横：1 文字分の幅に収まるよう横方向に圧縮して描く
+function drawVTcy(ctx, text, cx, top, fs) {
+  ctx.save();
+  const tw = ctx.measureText(text).width;
+  ctx.translate(cx, top + fs * 0.88);
+  ctx.scale(Math.min(1, (fs * 1.1) / tw), 1);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  fillTextB(ctx, text, 0, 0);
+  ctx.restore();
+}
+
+// 1 列に収まる短い縦書き文字列（目次用）。maxCells を超える分は「…」で切り詰める
+function drawVerticalString(ctx, text, cx, top, fs, bold, color, maxCells = Infinity) {
+  ctx.font = verticalFont(fs, bold);
+  ctx.fillStyle = color;
+  const adv = Math.round(fs * 1.1);
+  let segs = segmentVertical(text).flatMap(s =>
+    s.kind === 'rot' ? [...s.text].map(ch => ({ text: ch, kind: 'char' })) : [s]);
+  if (segs.length > maxCells) segs = [...segs.slice(0, Math.max(0, maxCells - 1)), { text: '…', kind: 'char' }];
+  let y = top;
+  for (const seg of segs) {
+    if (seg.kind === 'tcy') drawVTcy(ctx, seg.text, cx, y, fs);
+    else drawVGlyph(ctx, seg.text, cx, y, fs);
+    y += adv;
+  }
+}
+
+// ── Vertical (tategumi) renderer ──────────────────────────
+async function renderBlocksVertical(blocks, { W, H, M, imgBytes, inlineImgs, emit }) {
+  const canvases = [];
+  const toc = []; // { text, level, pageIndex }
+  const links = [];   // { page, rect, target | uri }
+  const anchors = {}; // id → page
+
+  // 描き終わったページはすぐ emit（エンコード）して手放す
+  let flushed = 0;
+  async function flushPages() {
+    while (flushed < canvases.length) {
+      const c = canvases[flushed];
+      canvases[flushed++] = null;
+      await emit(c);
+    }
+  }
+
+  const BASE_SIZE = 20;
+  // 列幅（行送り）は見出し・本文・画像すべてで共通にする（列ごとに幅が違うと重なる）。
+  // 文字の右側の余白にルビが入る
+  const COL_W    = Math.round(BASE_SIZE * 2.0);
+  const contentH = H - M * 2;
+  const contentW = W - M * 2;
+  const maxCols  = Math.floor(contentW / COL_W);
+
+  let canvas = newCanvas(W, H);
+  let ctx = canvas.getContext('2d');
+  fillWhite(ctx, W, H);
+
+  let col = 0;  // 0 = rightmost
+  let y   = M;
+
+  // 列の中心 x
+  const centerOf = c => W - M - (c + 0.5) * COL_W;
+  function colCenter() { return centerOf(col); }
+
+  function newPage() {
+    canvases.push(canvas);
+    canvas = newCanvas(W, H); ctx = canvas.getContext('2d'); fillWhite(ctx, W, H);
+    col = 0; y = M;
+  }
+
+  function nextCol() {
+    col++;
+    if (col >= maxCols) newPage();
+    else y = M;
+  }
+
+  function ensureY(needed) {
+    if (y + needed > H - M) nextCol();
+  }
+
+  function drawRotatedRun(text, fs, bold, onChar) {
+    let rest = [...text];
+    while (rest.length) {
+      ctx.font = verticalFont(fs, bold);
+      ctx.fillStyle = '#111';
+      const avail = H - M - y;
+      let n = rest.length;
+      while (n > 1 && ctx.measureText(rest.slice(0, n).join('')).width > avail) n--;
+      const part = rest.slice(0, n).join('');
+      const w = ctx.measureText(part).width;
+      if (w > avail && y > M) { nextCol(); continue; }
+      for (let k = 0; k < n; k++) onChar(w / n);
+      ctx.save();
+      ctx.translate(colCenter(), y);
+      ctx.rotate(Math.PI / 2);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fillTextB(ctx, part, 0, 0);
+      ctx.restore();
+      y += w + fs * 0.15;
+      rest = rest.slice(n);
+    }
+  }
+
+  const HANG = /^[、。，．」』）】〕]$/; // 行頭禁則：列末にぶら下げる
+
+  // 段落（見出し）を縦に描く。ルビは文字の右側に、行内画像は 1 文字分の大きさで描く
+  function drawVertBlock(block, fs, bold) {
+    const adv = Math.round(fs * 1.1);
+    const rs = Math.round(fs * 0.5);
+    const rubyAt = new Map((block.ruby || []).map(r => [r.from, r]));
+    const rubyEnd = new Map((block.ruby || []).map(r => [r.to - 1, r]));
+    const blockLinks = block.links || [];
+    const pos = [];         // pos[k] = 各文字を描いた位置 { page, col, y }
+    let cur = null;         // 描画中のリンク矩形
+    let k = 0;              // 現在のコードポイント位置
+
+    const endLink = () => { if (cur) { links.push(cur.out); cur = null; } };
+    // 1 文字描くごとに呼ぶ：位置の記録・リンク矩形の拡張・ルビの描画
+    function placed(h) {
+      const p = { page: canvases.length, col, y };
+      pos[k] = p;
+      const l = blockLinks.find(l => k >= l.from && k < l.to);
+      if (l && cur && cur.l === l && cur.page === p.page && cur.col === p.col) {
+        cur.out.rect.h = p.y + h - cur.out.rect.y;
+      } else {
+        endLink();
+        if (l) cur = { l, page: p.page, col: p.col,
+          out: { page: p.page, rect: { x: centerOf(p.col) - COL_W / 2, y: p.y, w: COL_W, h }, target: l.target, uri: l.uri } };
+      }
+      const r = rubyEnd.get(k);
+      if (r) drawRuby(r, h);
+      k++;
+    }
+
+    function drawRuby(r, h) {
+      // 親文字のうち、最後の文字と同じ列にある部分の右側に置く
+      const last = pos[r.to - 1];
+      let from = r.from;
+      while (from < r.to - 1 && (!pos[from] || pos[from].page !== last.page || pos[from].col !== last.col)) from++;
+      const start = pos[from].y, end = last.y + h;
+      const chars = [...r.rt];
+      const total = chars.length * rs;
+      let ry = total <= end - start ? start + (end - start - total) / 2 : start - (total - (end - start)) / 2;
+      ry = Math.max(M - rs, ry);
+      ctx.save();
+      ctx.font = verticalFont(rs, false);
+      ctx.fillStyle = '#111';
+      const rx = centerOf(last.col) + fs / 2 + rs / 2;
+      for (const ch of chars) { drawVGlyph(ctx, ch, rx, ry, rs); ry += rs; }
+      ctx.restore();
+    }
+
+    for (const seg of segmentVertical(block.text)) {
+      const n = [...seg.text].length;
+      // ルビ付きの語は列の途中で分けない
+      const r = rubyAt.get(k);
+      if (r) ensureY(Math.min((r.to - r.from) * adv, contentH));
+      if (seg.kind === 'rot') { drawRotatedRun(seg.text, fs, bold, placed); continue; }
+      if (!(HANG.test(seg.text) && y > M && y <= H - M)) ensureY(adv);
+      ctx.font = verticalFont(fs, bold); // 改ページで ctx が変わるので毎回設定
+      ctx.fillStyle = '#111';
+      const idx = inlineIndex(seg.text);
+      if (idx >= 0) drawInlineImage(ctx, inlineImgs[idx], colCenter() - fs / 2, y, fs);
+      else if (seg.kind === 'tcy') drawVTcy(ctx, seg.text, colCenter(), y, fs);
+      else drawVGlyph(ctx, seg.text, colCenter(), y, fs);
+      for (let j = 0; j < n; j++) placed(adv);
+      y += adv;
+    }
+    endLink();
+  }
+
+  for (const block of blocks) {
+    await flushPages();
+    if (block.type === 'pagebreak') {
+      if (y > M || col > 0) newPage();
+
+    } else if (block.type === 'anchor') {
+      anchors[block.id] = canvases.length;
+
+    } else if (block.type === 'heading') {
+      const sz = [0, 24, 21, 19, 18, 17, 16][block.level] || 16;
+      const adv = Math.round(sz * 1.1);
+      if (y > M) nextCol();
+      // 見出しだけがページ末尾に残らないよう、見出し＋本文 2 行が入らなければ改ページ
+      const textH = [...block.text].length * adv;
+      const headCols = Math.max(1, Math.ceil(textH / contentH));
+      if (col > 0 && col + headCols + 2 > maxCols) newPage();
+      (block.ids || []).forEach(id => { anchors[id] = canvases.length; });
+      toc.push({ text: plainText(block.text), level: block.level, pageIndex: canvases.length });
+      y = M + Math.max(0, Math.round((contentH - textH) / 2));
+      drawVertBlock(block, sz, true);
+      nextCol();
+
+    } else if (block.type === 'para' || block.type === 'pre') {
+      // 段落は必ず新しい列（＝改行）から始める
+      if (y > M) nextCol();
+      (block.ids || []).forEach(id => { anchors[id] = canvases.length; });
+      drawVertBlock(block.type === 'pre' ? { text: block.text.replace(/\s*\n\s*/g, ' ') } : block, BASE_SIZE, false);
+
+    } else if (block.type === 'br' || block.type === 'hr') {
+      // 空行：今の列を閉じたうえで 1 列空ける
+      if (y > M) nextCol();
+      nextCol();
+
+    } else if (block.type === 'image') {
+      const img = await loadImgFromBytes(imgBytes[block.key]);
+      if (!img) continue;
+
+      let iw = img.naturalWidth, ih = img.naturalHeight;
+      if (ih > contentH) { iw = Math.round(iw * contentH / ih); ih = contentH; }
+      if (iw > contentW) { ih = Math.round(ih * contentW / iw); iw = contentW; }
+
+      if (y > M) nextCol(); // 書きかけの列には重ねない
+      const neededCols = Math.max(1, Math.min(Math.ceil(iw / COL_W), maxCols));
+      if (col + neededCols > maxCols) newPage();
+
+      const spanW = neededCols * COL_W;
+      const imgX = W - M - col * COL_W - spanW + Math.round((spanW - iw) / 2);
+      const imgY = M + Math.round((contentH - ih) / 2);
+      ctx.drawImage(img, imgX, imgY, iw, ih);
+
+      col += neededCols;
+      if (col >= maxCols) newPage();
+      else y = M;
+    }
+  }
+
+  if (y > M || col > 0) canvases.push(canvas);
+  if (canvases.length === 0) canvases.push(blankCanvas(W, H));
+  await flushPages();
+  return { toc, links, anchors };
+}
+
+async function loadImgFromBytes(bytes) {
+  if (!bytes) return null;
+  try {
+    return await withImage(new Blob([bytes], { type: guessImageMime(bytes) }), img => img);
+  } catch(e) { return null; }
+}
+
+// SVG は MIME 型が無いと <img> で読めないので、中身から判定する
+function guessImageMime(bytes) {
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
+  if (bytes[0] === 0x47 && bytes[1] === 0x49) return 'image/gif';
+  if (bytes[0] === 0x42 && bytes[1] === 0x4D) return 'image/bmp';
+  if (bytes[8] === 0x57 && bytes[9] === 0x45) return 'image/webp';
+  const head = new TextDecoder().decode(bytes.subarray(0, 512));
+  if (/<svg[\s>]/i.test(head) || /^\s*<\?xml/.test(head)) return 'image/svg+xml';
+  return '';
+}
+
+function newCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+function fillWhite(ctx, w, h) {
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+}
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+function blankCanvas(w, h) {
+  const c = newCanvas(w, h);
+  fillWhite(c.getContext('2d'), w, h);
+  return c;
+}
+
+// 同じファイルを何度もデコードしないようキャッシュする
+const zipTextCache = new WeakMap();
+function decodeZipText(zip, path) {
+  let cache = zipTextCache.get(zip);
+  if (!cache) zipTextCache.set(zip, cache = new Map());
+  if (!cache.has(path)) cache.set(path, decodeZipTextRaw(zip, path));
+  return cache.get(path);
+}
+
+function decodeZipTextRaw(zip, path) {
+  // Exact match first, then case-insensitive
+  const bytes = zip[path]
+    ?? zip[Object.keys(zip).find(k => k.toLowerCase() === path.toLowerCase())];
+  if (!bytes) return null;
+  // Try UTF-8 first, then Shift-JIS, then latin-1
+  for (const enc of ['utf-8', 'shift-jis', 'iso-8859-1']) {
+    try {
+      return new TextDecoder(enc, { fatal: true }).decode(bytes);
+    } catch(e) {}
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+}
+
+// ── ICO builder ──────────────────────────────────────────
+async function convertToICO(blob) {
+  const sizes = [16, 32, 48, 256];
+  const pngBufs = await withImage(blob, img => Promise.all(sizes.map(async s => {
+    // 正方形でない画像は縦横比を保ったまま中央に配置（引き伸ばさない）
+    const canvas = newCanvas(s, s);
+    const ctx = canvas.getContext('2d');
+    const scale = Math.min(s / img.naturalWidth, s / img.naturalHeight);
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, Math.round((s - w) / 2), Math.round((s - h) / 2), w, h);
+    return (await canvasToBlob(canvas, 'PNG')).arrayBuffer();
+  })));
+
+  // ICO header
+  const numImages = sizes.length;
+  const headerSize = 6 + 16 * numImages;
+  let offset = headerSize;
+  const offsets = pngBufs.map(buf => { const o = offset; offset += buf.byteLength; return o; });
+
+  const total = offset;
+  const ico = new Uint8Array(total);
+  const dv = new DataView(ico.buffer);
+
+  // ICONDIR
+  dv.setUint16(0, 0, true); // reserved
+  dv.setUint16(2, 1, true); // type=1 (ICO)
+  dv.setUint16(4, numImages, true);
+
+  // ICONDIRENTRY per image
+  pngBufs.forEach((buf, i) => {
+    const base = 6 + i * 16;
+    const s = sizes[i];
+    dv.setUint8(base,     s === 256 ? 0 : s); // width (0 = 256)
+    dv.setUint8(base + 1, s === 256 ? 0 : s); // height
+    dv.setUint8(base + 2, 0);  // color count
+    dv.setUint8(base + 3, 0);  // reserved
+    dv.setUint16(base + 4, 1, true); // planes
+    dv.setUint16(base + 6, 32, true); // bit count
+    dv.setUint32(base + 8,  buf.byteLength, true); // size
+    dv.setUint32(base + 12, offsets[i], true);      // offset
+  });
+
+  // Image data
+  pngBufs.forEach((buf, i) => {
+    ico.set(new Uint8Array(buf), offsets[i]);
+  });
+
+  return new Blob([ico], { type: 'image/x-icon' });
+}
+
+// ── Minimal ZIP reader (no external lib) ─────────────────
+// 中央ディレクトリからサイズ・位置を読む。ローカルヘッダだけを走査する方式だと、
+// データディスクリプタ付き（サイズ 0 で記録される）ZIP のファイルを取りこぼす。
+async function readZip(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const dv = new DataView(arrayBuffer);
+  const out = {};
+
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xFFFF); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('ZIP として読み込めません（ファイルが壊れている可能性があります）');
+
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  for (let n = 0; n < count && p + 46 <= bytes.length; n++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const flags      = dv.getUint16(p + 8, true);
+    const method     = dv.getUint16(p + 10, true);
+    const compSize   = dv.getUint32(p + 20, true);
+    const fnLen      = dv.getUint16(p + 28, true);
+    const extraLen   = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOff   = dv.getUint32(p + 42, true);
+    const fnBytes    = bytes.subarray(p + 46, p + 46 + fnLen);
+    p += 46 + fnLen + extraLen + commentLen;
+
+    let filename;
+    try { filename = new TextDecoder('utf-8', { fatal: !(flags & 0x800) }).decode(fnBytes); }
+    catch (e) { filename = new TextDecoder('shift-jis').decode(fnBytes); }
+    if (filename.endsWith('/') || localOff + 30 > bytes.length) continue;
+
+    const dataStart = localOff + 30 + dv.getUint16(localOff + 26, true) + dv.getUint16(localOff + 28, true);
+    const compData  = bytes.subarray(dataStart, dataStart + compSize);
+    if (method === 0) {
+      out[filename] = compData;
+    } else if (method === 8) {
+      try { out[filename] = await inflateRaw(compData); }
+      catch(e) { /* skip undecompressable entry */ }
+    }
+  }
+  return out;
+}
+
+async function inflateRaw(data) {
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// ── EPUB builder from image pages ────────────────────────
+async function buildEpubFromImages(blobs, title, quality = 0.92) {
+  const pages = [];
+  for (const blob of blobs) {
+    pages.push(await withImage(blob, img => {
+      const c = newCanvas(img.naturalWidth, img.naturalHeight);
+      c.getContext('2d').drawImage(img, 0, 0);
+      // canvasToBlob が透過部分を白にする（JPEG で黒くならないように）
+      return canvasToJpegPage(c, quality).finally(() => releaseCanvas(c));
+    }));
+  }
+  return buildEpubZip(pages, title, 'image/jpeg', 'jpg');
+}
+
+function buildEpubZip(pages, title, imgMime, imgExt) {
+  // Build EPUB 3 (fixed layout) structure as a ZIP
+  const items = pages.map((p, i) => ({
+    id: `img${i+1}`,
+    imgFile: `images/page${String(i+1).padStart(3,'0')}.${imgExt}`,
+    xhtmlFile: `xhtml/page${String(i+1).padStart(3,'0')}.xhtml`,
+    bytes: p.bytes, w: p.w, h: p.h
+  }));
+
+  const uid = 'urn:uuid:' + crypto.randomUUID();
+  const modified = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+
+  const container = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+  // EPUB 3 では nav 文書と dcterms:modified が必須
+  const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" prefix="rendition: http://www.idpf.org/vocab/rendition/#">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>${escXml(title)}</dc:title>
+    <dc:language>ja</dc:language>
+    <dc:identifier id="uid">${uid}</dc:identifier>
+    <meta property="dcterms:modified">${modified}</meta>
+    <meta property="rendition:layout">pre-paginated</meta>
+    <meta property="rendition:spread">none</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    ${items.map(it=>`<item id="${it.id}-img" href="${it.imgFile}" media-type="${imgMime}"/>
+    <item id="${it.id}" href="${it.xhtmlFile}" media-type="application/xhtml+xml"/>`).join('\n    ')}
+  </manifest>
+  <spine toc="ncx">
+    ${items.map(it=>`<itemref idref="${it.id}"/>`).join('\n    ')}
+  </spine>
+</package>`;
+
+  const nav = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>${escXml(title)}</title></head>
+<body>
+  <nav epub:type="toc" id="toc"><ol>
+    ${items.map((it,i)=>`<li><a href="${it.xhtmlFile}">Page ${i+1}</a></li>`).join('\n    ')}
+  </ol></nav>
+</body>
+</html>`;
+
+  const ncx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+  <head><meta name="dtb:uid" content="${uid}"/></head>
+  <docTitle><text>${escXml(title)}</text></docTitle>
+  <navMap>
+    ${items.map((it,i)=>`<navPoint id="nav${i+1}" playOrder="${i+1}"><navLabel><text>Page ${i+1}</text></navLabel><content src="${it.xhtmlFile}"/></navPoint>`).join('\n    ')}
+  </navMap>
+</ncx>`;
+
+  const zipEntries = {
+    'mimetype': strToBytes('application/epub+zip'),
+    'META-INF/container.xml': strToBytes(container),
+    'OEBPS/content.opf': strToBytes(opf),
+    'OEBPS/nav.xhtml': strToBytes(nav),
+    'OEBPS/toc.ncx': strToBytes(ncx),
+  };
+
+  items.forEach((it, i) => {
+    const xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Page ${i+1}</title>
+<meta name="viewport" content="width=${it.w}, height=${it.h}"/>
+<style>html,body{margin:0;padding:0;background:#fff}img{display:block;width:100%;height:auto}</style>
+</head><body><img src="../${it.imgFile}" alt="page ${i+1}" width="${it.w}" height="${it.h}"/></body></html>`;
+    zipEntries[`OEBPS/${it.xhtmlFile}`] = strToBytes(xhtml);
+    zipEntries[`OEBPS/${it.imgFile}`] = it.bytes;
+  });
+
+  return new Blob([buildZip(zipEntries)], { type: 'application/epub+zip' });
+}
+
+// ── PDF builder (image-per-page) — pure binary assembly ──
+// links:   [{ page, rect: { x, y, w, h }（canvas 座標）, dest: ページ番号(0 始まり) | uri }]
+// outline: [{ title, level, page }]  → PDF のしおり（目次ジャンプ）
+async function buildImagePDF(pages, { links = [], outline = [], rtl = false } = {}) {
+  // All objects are collected as Uint8Array chunks.
+  // We track byte offsets for the xref table.
+  const enc = new TextEncoder();
+  const chunks = [];       // Uint8Array[]
+  const objOffset = {};    // objId → byte offset
+  let pos = 0;
+
+  function push(data) {
+    const b = typeof data === 'string' ? enc.encode(data) : data;
+    chunks.push(b);
+    pos += b.byteLength;
+  }
+  function startObj(id) { objOffset[id] = pos; push(`${id} 0 obj\n`); }
+  function endObj()      { push('endobj\n'); }
+
+  // 日本語を含む文字列は UTF-16BE（BOM 付き）の16進文字列で書く
+  const pdfText = s => '<FEFF' + [...Array(s.length)].map((_, i) => s.charCodeAt(i).toString(16).padStart(4, '0')).join('').toUpperCase() + '>';
+  const pdfAscii = s => '(' + s.replace(/[\\()]/g, '\\$&') + ')';
+
+  push('%PDF-1.4\n');
+  push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A])); // binary comment
+
+  // Object layout: 1 = Catalog, 2 = Pages, 以降は連番で割り当てる（xref に穴を作らない）
+  const n = pages.length;
+  let nextId = 3;
+  const pageIds    = pages.map(() => nextId++);
+  const imgIds     = pages.map(() => nextId++);
+  const contentIds = pages.map(() => nextId++);
+  const pt = px => +(px * 0.75).toFixed(2); // canvas px → PDF pt (96dpi → 72dpi)
+  // 移動先はページ全体表示。/Dest より /A GoTo の方が対応しているビューアが多い
+  const goTo = page => `/A << /S /GoTo /D [${pageIds[Math.max(0, Math.min(page, n - 1))]} 0 R /Fit] >>`;
+
+  // リンク注釈をページごとに振り分ける
+  const linksByPage = pages.map(() => []);
+  for (const l of links) {
+    if (linksByPage[l.page] && (l.uri || l.dest !== undefined)) linksByPage[l.page].push({ ...l, id: nextId++ });
+  }
+
+  // しおり（見出しレベルで入れ子にする）
+  const outlineRoot = { id: outline.length ? nextId++ : 0, level: 0, children: [] };
+  {
+    const stack = [outlineRoot];
+    for (const o of outline) {
+      const item = { ...o, id: nextId++, children: [] };
+      while (stack.length > 1 && stack[stack.length - 1].level >= item.level) stack.pop();
+      item.parent = stack[stack.length - 1];
+      item.parent.children.push(item);
+      stack.push(item);
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    const p = pages[i];
+    const jpeg = p.bytes;
+    const W = pt(p.w), H = pt(p.h);
+
+    // Image XObject
+    startObj(imgIds[i]);
+    push(`<< /Type /XObject /Subtype /Image\n   /Width ${p.w} /Height ${p.h}\n   /ColorSpace /DeviceRGB /BitsPerComponent 8\n   /Filter /DCTDecode /Length ${jpeg.byteLength} >>\nstream\n`);
+    push(jpeg);
+    push('\nendstream\n');
+    endObj();
+
+    // Content stream
+    const cs = enc.encode(`q ${W} 0 0 ${H} 0 0 cm /Im${i} Do Q`);
+    startObj(contentIds[i]);
+    push(`<< /Length ${cs.byteLength} >>\nstream\n`);
+    push(cs);
+    push('\nendstream\n');
+    endObj();
+
+    // Page object
+    const pageLinks = linksByPage[i];
+    const annots = pageLinks.length ? `\n   /Annots [${pageLinks.map(l => `${l.id} 0 R`).join(' ')}]` : '';
+    startObj(pageIds[i]);
+    push(`<< /Type /Page /Parent 2 0 R\n   /MediaBox [0 0 ${W} ${H}]\n   /Resources << /XObject << /Im${i} ${imgIds[i]} 0 R >> >>\n   /Contents ${contentIds[i]} 0 R${annots} >>\n`);
+    endObj();
+
+    // Link annotations (PDF 座標は左下原点なので Y を反転)
+    for (const l of pageLinks) {
+      const r = l.rect;
+      const llx = pt(r.x), urx = pt(r.x + r.w);
+      const ury = +(H - pt(r.y)).toFixed(2);
+      const lly = +(H - pt(r.y + r.h)).toFixed(2);
+      const action = l.uri ? `/A << /S /URI /URI ${pdfAscii(encodeURI(safeDecodeURI(l.uri)))} >>` : goTo(l.dest);
+      startObj(l.id);
+      push(`<< /Type /Annot /Subtype /Link /F 4 /H /I\n   /Rect [${llx} ${lly} ${urx} ${ury}]\n   /Border [0 0 0]\n   ${action} >>\n`);
+      endObj();
+    }
+  }
+
+  // Outline objects
+  const countAll = node => node.children.reduce((s, c) => s + 1 + countAll(c), 0);
+  function writeOutline(node) {
+    node.children.forEach((c, i) => {
+      const prev = node.children[i - 1], next = node.children[i + 1];
+      startObj(c.id);
+      push(`<< /Title ${pdfText(c.title)} /Parent ${c.parent.id} 0 R` +
+        (prev ? ` /Prev ${prev.id} 0 R` : '') + (next ? ` /Next ${next.id} 0 R` : '') +
+        (c.children.length ? ` /First ${c.children[0].id} 0 R /Last ${c.children[c.children.length - 1].id} 0 R /Count ${countAll(c)}` : '') +
+        ` ${goTo(c.page)} >>\n`);
+      endObj();
+      writeOutline(c);
+    });
+  }
+  if (outlineRoot.id) {
+    startObj(outlineRoot.id);
+    const ch = outlineRoot.children;
+    push(`<< /Type /Outlines /First ${ch[0].id} 0 R /Last ${ch[ch.length - 1].id} 0 R /Count ${countAll(outlineRoot)} >>\n`);
+    endObj();
+    writeOutline(outlineRoot);
+  }
+
+  // Catalog（縦書きの本は右綴じで表示。しおりがあればしおりパネルを開く）
+  startObj(1);
+  push(`<< /Type /Catalog /Pages 2 0 R` +
+    (outlineRoot.id ? ` /Outlines ${outlineRoot.id} 0 R /PageMode /UseOutlines` : '') +
+    (rtl ? ' /ViewerPreferences << /Direction /R2L >>' : '') + ` >>\n`);
+  endObj();
+
+  // Pages
+  startObj(2);
+  push(`<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${n} >>\n`);
+  endObj();
+
+  // xref
+  const xrefPos = pos;
+  const size = nextId;
+  push(`xref\n0 ${size}\n`);
+  push('0000000000 65535 f \n');
+  for (let id = 1; id < size; id++) {
+    push(`${String(objOffset[id]).padStart(10, '0')} 00000 n \n`);
+  }
+  push(`trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`);
+
+  return new Blob(chunks, { type: 'application/pdf' });
+}
+
+// ── ZIP builder ───────────────────────────────────────────
+function buildZip(entries) {
+  const centralDir = [];
+  const localParts = [];
+  let offset = 0;
+
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+  // mimetype MUST be stored uncompressed first (EPUB spec)
+  const ordered = Object.entries(entries).sort(([a],[b]) =>
+    a === 'mimetype' ? -1 : b === 'mimetype' ? 1 : 0
+  );
+
+  for (const [name, data] of ordered) {
+    const nameBytes = new TextEncoder().encode(name);
+    const stored = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const crc = crc32(stored);
+
+    // Local file header
+    const local = new Uint8Array(30 + nameBytes.length);
+    const dv = new DataView(local.buffer);
+    dv.setUint32(0, 0x04034b50, true);       // signature
+    dv.setUint16(4, 20, true);               // version needed
+    dv.setUint16(6, 0, true);                // flags
+    dv.setUint16(8, 0, true);                // compression = store
+    dv.setUint16(10, dosTime, true);         // mod time
+    dv.setUint16(12, dosDate, true);         // mod date
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, stored.length, true);   // compressed size
+    dv.setUint32(22, stored.length, true);   // uncompressed size
+    dv.setUint16(26, nameBytes.length, true);
+    dv.setUint16(28, 0, true);               // extra length
+    local.set(nameBytes, 30);
+
+    // Central directory entry
+    const cd = new Uint8Array(46 + nameBytes.length);
+    const cdv = new DataView(cd.buffer);
+    cdv.setUint32(0, 0x02014b50, true);      // signature
+    cdv.setUint16(4, 20, true);              // version made by
+    cdv.setUint16(6, 20, true);              // version needed
+    cdv.setUint16(8, 0, true);               // flags
+    cdv.setUint16(10, 0, true);              // compression
+    cdv.setUint16(12, dosTime, true);
+    cdv.setUint16(14, dosDate, true);
+    cdv.setUint32(16, crc, true);
+    cdv.setUint32(20, stored.length, true);  // compressed size
+    cdv.setUint32(24, stored.length, true);  // uncompressed size
+    cdv.setUint16(28, nameBytes.length, true);
+    cdv.setUint16(30, 0, true);              // extra length
+    cdv.setUint16(32, 0, true);              // comment length
+    cdv.setUint16(34, 0, true);              // disk number
+    cdv.setUint16(36, 0, true);              // internal attrs
+    cdv.setUint32(38, 0, true);              // external attrs
+    cdv.setUint32(42, offset, true);         // local header offset
+    cd.set(nameBytes, 46);
+    centralDir.push(cd);
+
+    localParts.push(local, stored);
+    offset += local.length + stored.length;
+  }
+
+  const cdSize = centralDir.reduce((s,c)=>s+c.length,0);
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054b50, true);
+  edv.setUint16(8,  centralDir.length, true);
+  edv.setUint16(10, centralDir.length, true);
+  edv.setUint32(12, cdSize, true);
+  edv.setUint32(16, offset, true);
+
+  return new Blob([...localParts, ...centralDir, eocd]);
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(data) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) crc = CRC_TABLE[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function strToBytes(s) { return new TextEncoder().encode(s); }
+function escXml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ─── Toast ────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer); // 連続で出したとき、前のタイマーで新しいメッセージが消えないように
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
