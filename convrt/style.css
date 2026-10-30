@@ -28,6 +28,8 @@ body {
   font-size: 15px;
   line-height: 1.7;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -39,6 +41,8 @@ button, select, input { font: inherit; color: inherit; }
 }
 
 .container {
+  flex: 1 0 auto;
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 0 20px 96px;
@@ -662,12 +666,29 @@ input[type=range]::-moz-range-thumb {
   color: var(--faint);
 }
 
-footer {
-  margin-top: 64px;
-  padding-top: 20px;
+/* Footer：画面幅いっぱいの淡い帯。ページが短くても画面の下端に置く */
+.site-footer {
+  flex-shrink: 0;
+  background: var(--paper);
   border-top: 1px solid var(--line);
+}
+
+.footer-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 22px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 24px;
   font-size: 12px;
   color: var(--faint);
+}
+
+.copyright {
+  color: var(--sub);
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 600px) {

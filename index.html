@@ -14,6 +14,7 @@
     --sub: #6e6c67;
     --faint: #9c9a94;
     --line: #e7e5e0;
+    --paper: #f7f6f3;
     --accent: #c8462c;
     --serif: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
     --sans: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
@@ -27,10 +28,15 @@
     font-family: var(--sans);
     font-size: 15px;
     line-height: 1.7;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     -webkit-font-smoothing: antialiased;
   }
 
   .container {
+    flex: 1 0 auto;
+    width: 100%;
     max-width: 760px;
     margin: 0 auto;
     padding: 40px 20px 96px;
@@ -86,6 +92,31 @@
   .menu a:hover .arrow { color: var(--accent); }
   .menu a:hover .arrow { transform: translateX(3px); }
 
+  /* Footer：画面幅いっぱいの淡い帯。ページが短くても画面の下端に置く */
+  .site-footer {
+    flex-shrink: 0;
+    background: var(--paper);
+    border-top: 1px solid var(--line);
+  }
+
+  .footer-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 22px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6px 24px;
+    font-size: 12px;
+    color: var(--faint);
+  }
+
+  .copyright {
+    color: var(--sub);
+    letter-spacing: 0.02em;
+  }
+
   @media (max-width: 600px) {
     .container { padding-top: 28px; }
     .menu a { padding: 18px 0; }
@@ -116,5 +147,11 @@
     </li>
   </ul>
 </div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <small class="copyright">© 2026 TEAM-Minimal</small>
+  </div>
+</footer>
 </body>
 </html>
