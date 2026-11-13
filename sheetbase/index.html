@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sheetbase</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <header class="head">
+    <h1>Sheetbase</h1>
+    <a class="back" href="../index.html">← Tools</a>
+  </header>
+  <p class="lead">Google スプレッドシートをデータベースにするサーバーです。シート 1 枚がテーブル 1 つ。Firebase や Supabase のように、ブラウザから読み書き・ログインができます。</p>
+
+  <section>
+    <h2>はじめかた</h2>
+    <ol class="steps">
+      <li>新しい Google スプレッドシートを作り、<b>拡張機能 → Apps Script</b> を開く。</li>
+      <li>はじめから入っているコードを消して、サーバーのコードを貼り付ける。
+        <div class="row">
+          <button class="btn" id="copyCode" type="button">Code.gs をコピー</button>
+          <a class="link" href="Code.gs" download>ダウンロード</a>
+          <span class="status" id="copyStatus" role="status"></span>
+        </div>
+      </li>
+      <li>上の関数えらびで <code>setup</code> を選んで <b>実行</b>（はじめの 1 回は Google の許可画面が出ます）。ログに管理キーが出ます。</li>
+      <li><b>デプロイ → 新しいデプロイ → ウェブアプリ</b>。「実行するユーザー：自分」「アクセスできるユーザー：全員」にしてデプロイ。</li>
+      <li>出てきた URL（<code>…/exec</code>）を下の「ためす」に入れる。</li>
+    </ol>
+    <p class="note">コードやルールを変えたあとは、<b>デプロイを管理 → 編集 → 新バージョン</b> でデプロイし直すと反映されます。</p>
+  </section>
+
+  <section>
+    <h2>つかいかた</h2>
+<pre><code>&lt;script src="sheetbase.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+const sb = Sheetbase.createClient('https://script.google.com/macros/s/XXXX/exec');
+
+// ログイン
+await sb.auth.signUp({ email: 'me@example.com', password: 'password123' });
+await sb.auth.signIn({ email: 'me@example.com', password: 'password123' });
+
+// 足す（シート「todos」が無ければ自動でできる）
+await sb.from('todos').insert({ title: '牛乳を買う', done: false });
+
+// 読む
+const { data, error } = await sb.from('todos')
+  .select('id,title')
+  .eq('done', false)
+  .order('createdAt', { ascending: false })
+  .limit(10);
+
+// 書きかえる・消す
+await sb.from('todos').update({ done: true }).eq('id', data[0].id);
+await sb.from('todos').delete().eq('id', data[0].id);
+
+// 5 秒ごとに見に行き、変わったら呼ばれる
+const stop = sb.from('todos').select().subscribe(({ data }) =&gt; render(data));
+&lt;/script&gt;</code></pre>
+    <p class="note">だれが読み書きできるかは Code.gs の <code>RULES</code> で決めます（<code>public</code>・<code>auth</code>・<code>owner</code>・<code>admin</code>）。くわしくは <a class="link" href="README.md">README</a> に。</p>
+  </section>
+
+  <section>
+    <h2>ためす</h2>
+
+    <div class="field">
+      <label for="url">ウェブアプリの URL</label>
+      <input id="url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="key">API キー（設定したときだけ）</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="row">
+      <button class="btn primary" id="connect" type="button">つなぐ</button>
+      <span class="status" id="connStatus" role="status"></span>
+    </div>
+
+    <div id="console" hidden>
+      <h3>ログイン</h3>
+      <div class="signed" id="signedIn" hidden>
+        <span id="who"></span>
+        <button class="btn" id="signOut" type="button">ログアウト</button>
+      </div>
+      <form id="authForm">
+        <div class="pair">
+          <div class="field">
+            <label for="email">メールアドレス</label>
+            <input id="email" type="email" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="password">パスワード（8 文字以上）</label>
+            <input id="password" type="password" autocomplete="current-password" minlength="8" required>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" type="submit" value="signIn">ログイン</button>
+          <button class="btn" type="submit" value="signUp">新しく登録</button>
+          <span class="status" id="authStatus" role="status"></span>
+        </div>
+      </form>
+
+      <h3>テーブル</h3>
+      <div class="field">
+        <label for="table">テーブル名（シート名）</label>
+        <input id="table" type="text" value="todos" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="json">足す行（JSON）</label>
+        <textarea id="json" rows="3" spellcheck="false">{ "title": "牛乳を買う", "done": false }</textarea>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="insert" type="button">足す</button>
+        <button class="btn" id="reload" type="button">読みこむ</button>
+        <span class="status" id="dbStatus" role="status"></span>
+      </div>
+      <div class="table-wrap" id="tableWrap" hidden>
+        <table id="rows"></table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <small class="copyright">© 2026 TEAM-Minimal</small>
+  </div>
+</footer>
+
+<script src="sheetbase.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
