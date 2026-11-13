@@ -35,6 +35,8 @@
 1. Vercel で「Add New → Project」からこのリポジトリをインポートする（Framework Preset は「Other」、ビルド設定は不要）。
    ページ（静的ファイル）と `api/` のサーバーレス関数が一緒にデプロイされます。
 2. プロジェクトの **Storage** →「Create Database」から **Neon（Postgres）** を作成してプロジェクトに接続する。
+   region は **Singapore（`ap-southeast-1`）**。API（`api/`）も `vercel.json` でシンガポール（`sin1`）で動かしているので、
+   region を変えるときは `vercel.json` の `regions` も合わせて変える。Auth と Realtime はオフでよい（ログインは Firebase で行う）。
    `DATABASE_URL` が自動で設定されます。テーブル（`sites`・`decks`）は最初のアクセス時に自動作成されます。
 3. **Settings → Environment Variables** に `FIREBASE_PROJECT_ID`（Firebase のプロジェクト ID）を追加して、再デプロイする。
 
