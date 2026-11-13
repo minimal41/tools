@@ -3,7 +3,7 @@
  *
  * 使い方（くわしくは README.md）
  *   1. スプレッドシートを開き、「拡張機能 → Apps Script」にこのファイルを貼り付ける
- *   2. 関数 setup を一度実行する（管理キーがログに出る）
+ *   2. 保存する（Ctrl+S / ⌘+S）
  *   3. 「デプロイ → 新しいデプロイ → ウェブアプリ」
  *        実行するユーザー：自分 ／ アクセスできるユーザー：全員
  *   4. 出てきた URL を sheetbase.js の createClient に渡す
@@ -77,7 +77,25 @@ function doGet(e) {
   return respond_(run_(req));
 }
 
-/** エディタから一度だけ実行する。キーを作ってログに表示する */
+/** スプレッドシートを開くと、メニューに「Sheetbase」が出る */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Sheetbase')
+    .addItem('管理キーを表示', 'showAdminKey')
+    .addToUi();
+}
+
+/** メニュー「Sheetbase → 管理キーを表示」 */
+function showAdminKey() {
+  var key = setup();
+  SpreadsheetApp.getUi().alert(
+    'Sheetbase の管理キー',
+    key + '\n\nすべてのルールを飛ばせるキーです。ブラウザに配るコードには書かないでください。',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+}
+
+/** キーを作ってログに表示する（エディタから実行しても、メニューから呼んでもよい）。管理キーを返す */
 function setup() {
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('ADMIN_KEY')) props.setProperty('ADMIN_KEY', 'sb_admin_' + randomId_() + randomId_());
@@ -85,6 +103,7 @@ function setup() {
   Logger.log('管理キー (ADMIN_KEY): ' + props.getProperty('ADMIN_KEY'));
   Logger.log('管理キーはすべてのルールを飛ばせます。ブラウザに配るコードには書かないでください。');
   Logger.log('公開キー (API_KEY): ' + (props.getProperty('API_KEY') || '未設定（URL を知っていればだれでも呼べます）'));
+  return props.getProperty('ADMIN_KEY');
 }
 
 /* ───────── 本体 ───────── */
