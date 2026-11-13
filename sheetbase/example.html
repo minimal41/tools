@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ひとこと掲示板</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .post { border-bottom: 1px solid var(--line); padding: 12px 0; }
+  .post .meta { font-size: 12px; color: var(--faint); }
+  .post .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="head">
+    <h1>ひとこと掲示板</h1>
+    <a class="back" href="index.html">← Sheetbase</a>
+  </header>
+  <p class="lead">Sheetbase を使ったアプリの見本です。書きこみはスプレッドシートのシート「posts」に入ります。</p>
+
+  <!-- ログインしていないときに出す -->
+  <form id="login">
+    <h3>ログイン</h3>
+    <div class="pair">
+      <div class="field"><label for="email">メールアドレス</label><input id="email" type="email" required></div>
+      <div class="field"><label for="password">パスワード（8 文字以上）</label><input id="password" type="password" minlength="8" required></div>
+    </div>
+    <div class="row">
+      <button class="btn primary" type="submit" value="signIn">ログイン</button>
+      <button class="btn" type="submit" value="signUp">新しく登録</button>
+      <span class="status" id="loginStatus" role="status"></span>
+    </div>
+  </form>
+
+  <!-- ログインしているときに出す -->
+  <form id="write" hidden>
+    <h3><span id="me"></span> <button class="btn" id="logout" type="button">ログアウト</button></h3>
+    <div class="field"><label for="text">ひとこと</label><textarea id="text" rows="2" required></textarea></div>
+    <div class="row">
+      <button class="btn primary" type="submit">書きこむ</button>
+      <span class="status" id="writeStatus" role="status"></span>
+    </div>
+  </form>
+
+  <h3>書きこみ</h3>
+  <div id="posts"><p class="note">読みこんでいます…</p></div>
+</div>
+
+<script src="sheetbase.js"></script>
+<script>
+  // ① ここに自分のウェブアプリの URL を入れる
+  //    （空のままなら、説明ページの「ためす」でつないだ URL を使う）
+  let URL = '';
+  if (!URL) { try { URL = localStorage.getItem('sheetbase:playground:url') || ''; } catch (e) {} }
+
+  const $ = id => document.getElementById(id);
+  if (!URL) {
+    $('posts').innerHTML = '<p class="note">URL がありません。このファイルの URL = \'\' に、ウェブアプリの URL を入れてください。</p>';
+    throw new Error('URL がありません');
+  }
+
+  // ② サーバーにつなぐ
+  const sb = Sheetbase.createClient(URL);
+
+  // ③ ログインしているかどうかで、出すフォームを切りかえる
+  function showUser() {
+    const user = sb.auth.getUser();
+    $('login').hidden = !!user;
+    $('write').hidden = !user;
+    $('me').textContent = user ? user.email : '';
+  }
+  sb.auth.onAuthStateChange(showUser);
+  showUser();
+
+  // ④ ログイン・登録
+  $('login').addEventListener('submit', async e => {
+    e.preventDefault();
+    const how = e.submitter.value; // 'signIn' か 'signUp'
+    $('loginStatus').textContent = '送っています…';
+    const { error } = await sb.auth[how]({ email: $('email').value, password: $('password').value });
+    $('loginStatus').textContent = error ? error.message : '';
+  });
+  $('logout').addEventListener('click', () => sb.auth.signOut());
+
+  // ⑤ 書きこむ（シート「posts」に 1 行足す）
+  $('write').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('writeStatus').textContent = '送っています…';
+    const { error } = await sb.from('posts').insert({
+      name: sb.auth.getUser().email,
+      text: $('text').value
+    });
+    $('writeStatus').textContent = error ? error.message : '';
+    if (!error) $('text').value = '';
+  });
+
+  // ⑥ 読む（新しい順に 50 件。5 秒ごとに見に行き、変わったら描き直す）
+  sb.from('posts')
+    .select()
+    .order('createdAt', { ascending: false })
+    .limit(50)
+    .subscribe(({ data, error }) => {
+      const box = $('posts');
+      box.textContent = '';
+      if (error) { box.innerHTML = '<p class="note"></p>'; box.firstChild.textContent = error.message; return; }
+      if (!data.length) { box.innerHTML = '<p class="note">まだ書きこみがありません。</p>'; return; }
+      for (const post of data) {
+        const div = document.createElement('div');
+        div.className = 'post';
+        div.innerHTML = '<div class="meta"></div><div class="text"></div>';
+        div.querySelector('.meta').textContent = post.name + ' ・ ' + new Date(post.createdAt).toLocaleString('ja-JP');
+        div.querySelector('.text').textContent = post.text;
+        box.appendChild(div);
+      }
+    });
+</script>
+</body>
+</html>

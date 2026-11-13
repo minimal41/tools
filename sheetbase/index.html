@@ -40,6 +40,14 @@
 
   <section>
     <h2>つかいかた</h2>
+    <ol class="steps">
+      <li>下の「ためす」に URL を入れて <b>つなぐ</b> → <b>新しく登録</b> → <b>足す</b>。スプレッドシートにシート「todos」ができて、行が入るのを見てみてください。</li>
+      <li>見本のアプリ <a class="link" href="example.html">ひとこと掲示板</a> を開く（「ためす」でつないだ URL をそのまま使います）。書きこむとシート「posts」に入ります。</li>
+      <li>自分のアプリを作るときは、<a class="link" href="example.html" download>example.html</a> をダウンロードして、中の <code>URL = ''</code> に自分の URL を入れ、書きかえていきます。<code>sheetbase.js</code> は次の 1 行で読みこめます。
+<pre><code>&lt;script src="https://tools-three-bay-66.vercel.app/sheetbase/sheetbase.js"&gt;&lt;/script&gt;</code></pre>
+      </li>
+    </ol>
+    <p class="note">書き方のまとめ：</p>
 <pre><code>&lt;script src="sheetbase.js"&gt;&lt;/script&gt;
 &lt;script&gt;
 const sb = Sheetbase.createClient('https://script.google.com/macros/s/XXXX/exec');
