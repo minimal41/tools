@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スライド</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Dela+Gothic+One&family=Klee+One:wght@400;600&family=M+PLUS+Rounded+1c:wght@400;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@400;700&family=Shippori+Mincho:wght@500;600;700&family=Yusei+Magic&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="home">
+<div class="container">
+  <header class="home-head">
+    <h1>スライド</h1>
+    <a class="back" href="../index.html">← Tools</a>
+  </header>
+
+  <section>
+    <h2>新しく作る</h2>
+    <div class="grid templates" id="templates"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>自分のスライド</h2>
+      <button class="btn" id="importBtn" type="button">ファイルから読み込む</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+    <div class="grid" id="decks"></div>
+    <p class="empty" id="empty" hidden>まだスライドがありません。上のテンプレートを選ぶと作り始められます。</p>
+    <p class="note">スライドはこのブラウザの中に保存されます。別の端末で使うときは「書き出し」でファイルにして、読み込んでください。</p>
+  </section>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <small class="copyright">© 2026 TEAM-Minimal</small>
+  </div>
+</footer>
+
+<script src="common.js"></script>
+<script src="home.js"></script>
+</body>
+</html>

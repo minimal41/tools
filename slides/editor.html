@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スライド</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Dela+Gothic+One&family=Klee+One:wght@400;600&family=M+PLUS+Rounded+1c:wght@400;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@400;700&family=Shippori+Mincho:wght@500;600;700&family=Yusei+Magic&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="editor">
+
+<div class="bar top">
+  <a class="tb" href="index.html" title="スライド一覧へ">← 一覧</a>
+  <input id="title" class="title-input" type="text" maxlength="100" aria-label="スライドの名前">
+  <span id="status" class="status"></span>
+  <span class="grow"></span>
+  <button class="tb" data-act="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
+  <button class="tb" data-act="redo" title="やり直す (Ctrl+Y)">やり直す</button>
+  <span class="sep"></span>
+  <button class="tb" data-pop="popSettings">設定</button>
+  <button class="tb" data-pop="popExport">書き出し</button>
+  <button class="tb primary" data-act="present" title="発表 (F5)">▶ 発表</button>
+</div>
+
+<div class="bar tools" id="tools" data-ctx="none">
+  <button class="tb" data-act="addText">＋ テキスト</button>
+  <button class="tb" data-pop="popShape">＋ 図形</button>
+  <button class="tb" data-act="addImage">＋ 画像</button>
+  <input type="file" id="imgFile" accept="image/*" hidden>
+  <span class="sep"></span>
+
+  <span class="group g-text">
+    <select id="font" class="tb" title="フォント"></select>
+    <button class="tb sq" data-act="sizeDown" title="小さく">−</button>
+    <input id="size" class="tb num" type="number" min="6" max="400" title="文字サイズ">
+    <button class="tb sq" data-act="sizeUp" title="大きく">＋</button>
+    <button class="tb sq" data-fmt="bold" title="太字 (Ctrl+B)"><b>B</b></button>
+    <button class="tb sq" data-fmt="italic" title="斜体 (Ctrl+I)"><i style="font-family:Georgia,serif">I</i></button>
+    <button class="tb sq" data-fmt="underline" title="下線 (Ctrl+U)"><u>U</u></button>
+    <button class="tb sq" data-fmt="strike" title="取り消し線"><s>S</s></button>
+    <label class="tb swatch" title="文字の色">A<input type="color" id="color"></label>
+    <span class="sep"></span>
+    <button class="tb sq" data-align="left" title="左揃え"><svg viewBox="0 0 16 16"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></svg></button>
+    <button class="tb sq" data-align="center" title="中央揃え"><svg viewBox="0 0 16 16"><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></svg></button>
+    <button class="tb sq" data-align="right" title="右揃え"><svg viewBox="0 0 16 16"><path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/></svg></button>
+    <button class="tb sq" data-va="top" title="上に寄せる"><svg viewBox="0 0 16 16"><path d="M2 2.5h12M4 6h8M4 9h8"/></svg></button>
+    <button class="tb sq" data-va="middle" title="上下中央"><svg viewBox="0 0 16 16"><path d="M4 6.5h8M4 9.5h8M2 2h12M2 14h12" /></svg></button>
+    <button class="tb sq" data-va="bottom" title="下に寄せる"><svg viewBox="0 0 16 16"><path d="M2 13.5h12M4 7h8M4 10h8"/></svg></button>
+    <select id="lh" class="tb" title="行間">
+      <option value="1">行間 1.0</option><option value="1.2">行間 1.2</option><option value="1.4">行間 1.4</option>
+      <option value="1.7">行間 1.7</option><option value="2">行間 2.0</option>
+    </select>
+    <button class="tb" data-act="list" title="箇条書き（文字の入力中に使えます）">・箇条書き</button>
+    <span class="sep"></span>
+  </span>
+
+  <span class="group g-shape">
+    <label class="tb swatch" title="塗りの色">塗り<input type="color" id="fill"></label>
+    <button class="tb" data-act="noFill" title="塗りをなくす">塗りなし</button>
+    <label class="tb swatch" title="枠線の色">枠<input type="color" id="stroke"></label>
+    <select id="sw" class="tb" title="枠線の太さ">
+      <option value="0">枠なし</option><option value="1">1px</option><option value="2">2px</option>
+      <option value="4">4px</option><option value="8">8px</option>
+    </select>
+    <select id="radius" class="tb" title="角の丸み">
+      <option value="0">角 0</option><option value="8">角 8</option><option value="24">角 24</option><option value="60">角 60</option>
+    </select>
+    <span class="sep"></span>
+  </span>
+
+  <span class="group g-sel">
+    <button class="tb" data-act="front" title="最前面へ">前面へ</button>
+    <button class="tb" data-act="back" title="最背面へ">背面へ</button>
+    <button class="tb" data-act="dup" title="複製 (Ctrl+D)">複製</button>
+    <button class="tb" data-act="del" title="削除 (Delete)">削除</button>
+    <span class="sep"></span>
+  </span>
+
+  <label class="tb swatch" title="このスライドの背景色">背景<input type="color" id="bg"></label>
+</div>
+
+<div id="main">
+  <aside id="panel">
+    <div class="panel-tools">
+      <button class="tb" data-pop="popLayout" title="スライドを追加">＋ 追加</button>
+      <button class="tb" data-act="slideDup" title="スライドを複製">複製</button>
+      <button class="tb sq" data-act="slidePrev" title="前へ移動">↑</button>
+      <button class="tb sq" data-act="slideNext" title="後ろへ移動">↓</button>
+      <button class="tb" data-act="slideDel" title="スライドを削除">削除</button>
+    </div>
+    <div id="thumbs"></div>
+  </aside>
+  <div id="work">
+    <div id="stageWrap">
+      <div id="stage" class="stage"></div>
+      <div id="overlay">
+        <div id="guideV" class="guide" hidden></div>
+        <div id="guideH" class="guide" hidden></div>
+        <div id="selbox" hidden>
+          <i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i><i data-h="e"></i>
+          <i data-h="se"></i><i data-h="s"></i><i data-h="sw"></i><i data-h="w"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pop" id="popSettings">
+  <div class="pop-label">ページ一覧の位置</div>
+  <label class="radio"><input type="radio" name="panelPos" value="left"> 左</label>
+  <label class="radio"><input type="radio" name="panelPos" value="bottom"> 下</label>
+</div>
+<div class="pop" id="popExport">
+  <button class="item" data-act="print">PDF にする（印刷）</button>
+  <button class="item" data-act="exportJson">ファイルに書き出す（.json）</button>
+</div>
+<div class="pop" id="popShape">
+  <button class="item" data-shape="rect">四角</button>
+  <button class="item" data-shape="round">角丸の四角</button>
+  <button class="item" data-shape="ellipse">円</button>
+  <button class="item" data-shape="line">線</button>
+</div>
+<div class="pop" id="popLayout"></div>
+
+<div id="present" hidden>
+  <div id="pStage" class="stage"></div>
+  <button id="pClose" title="終了 (Esc)">×</button>
+  <div id="pCount"></div>
+</div>
+<div id="printArea"></div>
+
+<script src="common.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>
