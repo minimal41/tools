@@ -9,13 +9,14 @@
  *
  * ※ この値は公開しても問題ない識別子です（データは firestore.rules で保護します）。
  */
-export const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+const firebaseConfig = {
+  apiKey: "AIzaSyD9XlO1cCIZEPldyIRWqsjEe7cP3ToINkM",
+  authDomain: "minimal41-tools.firebaseapp.com",
+  projectId: "minimal41-tools",
+  storageBucket: "minimal41-tools.firebasestorage.app",
+  messagingSenderId: "169216843768",
+  appId: "1:169216843768:web:c0542f0ec078b44095800d",
+  measurementId: "G-14CV51MJN0"
 };
 
 /*
