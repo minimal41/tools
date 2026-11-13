@@ -1,5 +1,7 @@
 /*
- * Firebase プロジェクトの設定
+ * Tools の設定
+ *
+ * ■ Firebase（アカウントとユーザー情報）
  *
  * Firebase コンソール →「プロジェクトの設定」→「マイアプリ」→ ウェブアプリの
  * firebaseConfig の値をそのまま貼り付けてください。
@@ -15,3 +17,12 @@ export const firebaseConfig = {
   messagingSenderId: 'YOUR_SENDER_ID',
   appId: 'YOUR_APP_ID',
 };
+
+/*
+ * ■ Vercel（サイトなどのデータ保存 API）
+ *
+ * このリポジトリを Vercel にデプロイしている場合は '' のまま（同じ場所の /api を使う）。
+ * ページを GitHub Pages など別の場所に置く場合は、Vercel のアドレスを書く。
+ *   例: 'https://tools-xxxx.vercel.app'
+ */
+export const apiBase = '';

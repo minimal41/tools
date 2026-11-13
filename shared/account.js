@@ -1,12 +1,12 @@
 /*
- * Tools 共通アカウント（Firebase Authentication + Cloud Firestore）
+ * Tools 共通アカウント
  *
  * アカウントの作成・ログインは Tools のホーム（/index.html）で行い、
- * 各ツールはこのモジュールを読み込んでログイン状態とユーザーデータを使う。
+ * 各ツールはこのモジュールを読み込んでログイン状態とデータを使う。
  *
- * Firestore の構成
- *   users/{uid}                 … ユーザー情報（email, displayName, createdAt, lastLoginAt）
- *   users/{uid}/sites/{siteId}  … Making Site で作ったサイト（title, html, state, createdAt, updatedAt）
+ *   アカウント・ユーザー情報 … Firebase（Authentication + Firestore の users/{uid}）
+ *   サイトなどのデータ       … Vercel（/api/sites、Postgres に保存）
+ *                              Firebase の ID トークンを付けて呼び、サーバー側で本人確認する。
  */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
@@ -14,10 +14,9 @@ import {
   signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, addDoc,
-  collection, getDocs, query, orderBy, serverTimestamp,
+  getFirestore, doc, setDoc, getDoc, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, apiBase } from './config.js';
 
 export const isConfigured =
   !!firebaseConfig.apiKey && !/^YOUR_/.test(firebaseConfig.apiKey);
@@ -31,7 +30,7 @@ if (isConfigured) {
   db = getFirestore(app);
 }
 
-const NOT_CONFIGURED = 'Firebase が未設定です（shared/firebase-config.js を設定してください）。';
+const NOT_CONFIGURED = 'Firebase が未設定です（shared/config.js を設定してください）。';
 
 /* ---------- ログイン状態 ---------- */
 
@@ -141,50 +140,64 @@ export function errorMessage(err) {
     'auth/user-disabled': 'このアカウントは無効化されています。',
     'auth/operation-not-allowed': 'メール/パスワードでのログインが有効になっていません（Firebase コンソールで有効にしてください）。',
     'permission-denied': 'データへのアクセスが許可されていません（Firestore のルールを確認してください）。',
-    'invalid-argument': 'データが大きすぎるか、形式が正しくないため保存できませんでした。',
   };
   return map[code] || (err && err.message) || '不明なエラーが発生しました。';
 }
 
+/* ---------- Vercel の API ---------- */
+
+/** ログイン中のユーザーとして Vercel の API を呼ぶ */
+async function api(path, { method = 'GET', body } = {}) {
+  if (!currentUser) throw Object.assign(new Error('ログインしていません。'), { code: 'tools/not-logged-in' });
+  const token = await currentUser.getIdToken();
+  let res;
+  try {
+    res = await fetch(apiBase.replace(/\/$/, '') + path, {
+      method,
+      headers: {
+        Authorization: 'Bearer ' + token,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw Object.assign(new Error('保存用のサーバー（Vercel）に接続できませんでした。'), { code: 'tools/api-unreachable' });
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const fallback = res.status === 413
+      ? 'サイトのデータが大きすぎて保存できません。画像を小さくしてください。'
+      : `サーバーでエラーが発生しました（${res.status}）。`;
+    throw Object.assign(new Error(data.error || fallback), { code: 'tools/api-' + res.status, status: res.status });
+  }
+  return data;
+}
+
 /* ---------- Making Site のサイト ---------- */
 
-function sitesCol() {
-  if (!currentUser) throw new Error('ログインしていません。');
-  return collection(db, 'users', currentUser.uid, 'sites');
-}
-
-function toSite(snap) {
-  const d = snap.data();
-  const ts = (v) => (v && typeof v.toDate === 'function' ? v.toDate().toISOString() : null);
-  return {
-    id: snap.id,
-    title: d.title || '',
-    html: d.html || null,
-    state: d.state || null,
-    created_at: ts(d.createdAt),
-    updated_at: ts(d.updatedAt),
-  };
-}
+const enc = encodeURIComponent;
 
 export const sites = {
+  /** 一覧（html / state は含まない。has_html で HTML 保存済みかが分かる） */
   async list() {
-    const snaps = await getDocs(query(sitesCol(), orderBy('createdAt', 'desc')));
-    return snaps.docs.map(toSite);
+    return (await api('/api/sites')).sites;
   },
+  /** 1件（html / state を含む）。見つからなければ null */
   async get(id) {
-    const snap = await getDoc(doc(sitesCol(), id));
-    return snap.exists() ? toSite(snap) : null;
+    try {
+      return (await api('/api/sites?id=' + enc(id))).site;
+    } catch (e) {
+      if (e.status === 404) return null;
+      throw e;
+    }
   },
   async create(data) {
-    const ref = await addDoc(sitesCol(), {
-      ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    });
-    return ref.id;
+    return (await api('/api/sites', { method: 'POST', body: data })).id;
   },
   async update(id, data) {
-    await updateDoc(doc(sitesCol(), id), { ...data, updatedAt: serverTimestamp() });
+    await api('/api/sites?id=' + enc(id), { method: 'PUT', body: data });
   },
   async remove(id) {
-    await deleteDoc(doc(sitesCol(), id));
+    await api('/api/sites?id=' + enc(id), { method: 'DELETE' });
   },
 };

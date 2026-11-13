@@ -1,0 +1,13 @@
+{
+  "name": "tools",
+  "private": true,
+  "description": "Tools — static pages plus Vercel serverless API (api/)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test sheetbase/test/run.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "pg": "^8.13.1"
+  }
+}

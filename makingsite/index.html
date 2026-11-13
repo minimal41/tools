@@ -210,7 +210,9 @@ account.onUserChanged((user)=>{
 });
 
 /* --- サイト一覧の読み込み（Firestore から） --- */
+let loadError = '';
 async function loadSites(){
+  loadError = '';
   if(!currentUser){
     cachedSites = [];
     return [];
@@ -220,6 +222,7 @@ async function loadSites(){
   }catch(error){
     console.warn('サイト一覧の読み込みに失敗しました', error);
     cachedSites = [];
+    loadError = account.errorMessage(error);
   }
   return cachedSites;
 }
@@ -239,6 +242,18 @@ function escapeHTML(str){
   return div.innerHTML;
 }
 
+/* プレビュー・再ダウンロード用に、HTML はボタンを押したときに読み込む */
+async function fetchHTML(id){
+  try{
+    const site = await account.sites.get(id);
+    if(site && site.html) return site.html;
+    alert('サイトが見つかりませんでした。');
+  }catch(error){
+    alert('読み込みに失敗しました: ' + account.errorMessage(error));
+  }
+  return null;
+}
+
 async function render(){
   const container = document.getElementById('siteList');
 
@@ -250,6 +265,11 @@ async function render(){
   container.innerHTML = `<div class="empty">読み込み中…</div>`;
   const sites = await loadSites();
 
+  if(loadError){
+    container.innerHTML = `<div class="empty">サイト一覧を読み込めませんでした。<br>${escapeHTML(loadError)}</div>`;
+    return;
+  }
+
   if(sites.length === 0){
     container.innerHTML = `<div class="empty">まだサイトが保存されていません。<br>編集画面でサイトを作ってダウンロードすると、ここに表示されます。</div>`;
     return;
@@ -257,12 +277,12 @@ async function render(){
 
   container.innerHTML = `<div class="site-grid">` + sites.map(site => `
     <div class="site-card" data-id="${escapeHTML(site.id)}">
-      <h2>${escapeHTML(site.title || '無題のサイト')}${site.html ? '' : ' <span style="font-size:11px;font-weight:400;color:var(--text-dim);border:1px solid var(--line);border-radius:2px;padding:1px 6px;">下書き</span>'}</h2>
+      <h2>${escapeHTML(site.title || '無題のサイト')}${site.has_html ? '' : ' <span style="font-size:11px;font-weight:400;color:var(--text-dim);border:1px solid var(--line);border-radius:2px;padding:1px 6px;">下書き</span>'}</h2>
       <div class="meta">保存日時: ${formatDate(site.created_at)}</div>
       <div class="actions">
         <a href="edit.html?site=${encodeURIComponent(site.id)}" class="btn primary open-edit-btn">開く</a>
-        <button type="button" class="open-btn" ${site.html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>プレビュー</button>
-        <button type="button" class="dl-btn" ${site.html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>再ダウンロード</button>
+        <button type="button" class="open-btn" ${site.has_html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>プレビュー</button>
+        <button type="button" class="dl-btn" ${site.has_html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>再ダウンロード</button>
         <button type="button" class="del-btn danger">削除</button>
       </div>
     </div>
@@ -273,15 +293,20 @@ async function render(){
     const site = cachedSites.find(s => s.id === id);
     if(!site) return;
 
-    if(site.html){
-      card.querySelector('.open-btn').addEventListener('click', ()=>{
-        const blob = new Blob([site.html], {type:'text/html'});
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+    if(site.has_html){
+      card.querySelector('.open-btn').addEventListener('click', async ()=>{
+        // ポップアップがブロックされないよう、読み込み前に先にタブを開いておく
+        const win = window.open('', '_blank');
+        const html = await fetchHTML(id);
+        if(html === null){ if(win) win.close(); return; }
+        const url = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+        if(win) win.location.href = url; else window.open(url, '_blank');
       });
 
-      card.querySelector('.dl-btn').addEventListener('click', ()=>{
-        const blob = new Blob([site.html], {type:'text/html'});
+      card.querySelector('.dl-btn').addEventListener('click', async ()=>{
+        const html = await fetchHTML(id);
+        if(html === null) return;
+        const blob = new Blob([html], {type:'text/html'});
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
