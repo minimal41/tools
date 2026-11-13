@@ -84,7 +84,9 @@
         if (json.error && json.error.code === 'invalid_token' && session) setSession(null, 'SIGNED_OUT');
         return { data: json.data === undefined ? null : json.data, error: json.error || null, count: json.count == null ? null : json.count };
       }).catch(function (err) {
-        return fail('network', String((err && err.message) || err));
+        // Apps Script がログイン画面やエラー画面を返すと、ブラウザは CORS エラーとして止めるので、ここに来る
+        return fail('network', '通信できませんでした（' + String((err && err.message) || err) + '）。' +
+          'デプロイの「アクセスできるユーザー」が「全員」になっているか、URL をシークレットウィンドウで直接開いて確かめてください');
       });
     }
 
