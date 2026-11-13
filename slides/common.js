@@ -67,6 +67,59 @@ const DB = {
   del(id) { return this.run('readwrite', s => s.delete(id)); },
 };
 
+/* ---------- 保存先の切り替え ----------
+ * Tools のアカウントでログインしていれば Vercel（/api/decks）に、
+ * ログインしていなければ、これまでどおりこのブラウザ（IndexedDB）に保存する。 */
+const Store = {
+  ready() {
+    return this._ready || (this._ready = import('../shared/account.js')
+      .then(async account => ({ account, user: await account.waitForUser() }))
+      .catch(e => {
+        console.warn('アカウント機能を読み込めませんでした', e);
+        return { account: null, user: null };
+      }));
+  },
+  async remote() {
+    const r = await this.ready();
+    return r.user ? r.account : null;
+  },
+  /** 一覧：{ id, title, created, updated, count, first } */
+  async list() {
+    const a = await this.remote();
+    if (a) return a.decks.list();
+    return (await DB.all()).map(d => ({
+      id: d.id, title: d.title, created: d.created, updated: d.updated,
+      count: d.slides.length, first: d.slides[0],
+    }));
+  },
+  async get(id) {
+    const a = await this.remote();
+    return a ? a.decks.get(id) : DB.get(id);
+  },
+  /* 保存は呼ばれた時点の内容を控えて、順番に送る。
+     送る順番が来たときに、より新しい内容が控えられていれば古い方は飛ばす。 */
+  put(deck) {
+    const id = deck.id;
+    const json = JSON.stringify(deck);
+    this._latest = this._latest || {};
+    this._latest[id] = json;
+    const run = async () => {
+      if (this._latest[id] !== json) return; // 後の保存がもっと新しい内容を送る
+      const a = await this.remote();
+      if (a) await a.decks.put(JSON.parse(json));
+      else await DB.put(JSON.parse(json));
+    };
+    return (this._chain = (this._chain || Promise.resolve()).catch(() => {}).then(run));
+  },
+  async del(id) {
+    const a = await this.remote();
+    return a ? a.decks.remove(id) : DB.del(id);
+  },
+  errorText(e) {
+    return e && e.message ? e.message : String(e);
+  },
+};
+
 /* ---------- 部品 ---------- */
 const tx = (x, y, w, h, html, o = {}) => ({
   id: uid(), type: 'text', x, y, w, h, html,

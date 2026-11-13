@@ -97,6 +97,13 @@ button.card:hover .thumb, .card a:hover .thumb { border-color: var(--ink); }
 
 .empty { color: var(--sub); font-size: 14px; }
 .note { margin-top: 28px; font-size: 12px; color: var(--faint); }
+.note a { color: var(--sub); }
+.migrate {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 20px; padding: 10px 14px; font-size: 13px;
+  background: var(--paper, #f7f6f3); border: 1px solid var(--line);
+}
+.migrate[hidden] { display: none; }
 
 .site-footer { flex-shrink: 0; background: var(--paper); border-top: 1px solid var(--line); }
 .footer-inner { max-width: 760px; margin: 0 auto; padding: 16px 20px; text-align: center; line-height: 1.5; }

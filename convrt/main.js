@@ -439,7 +439,10 @@ convertBtn.addEventListener('click', async () => {
       resultList.appendChild(allBtn);
     }
 
-    if (results.length > 0) resultArea.style.display = 'block';
+    if (results.length > 0) {
+      resultArea.style.display = 'block';
+      addHistoryRun(results);
+    }
   } finally {
     converting = false;
     convertBtn.disabled = false;
@@ -3159,3 +3162,141 @@ function showToast(msg) {
   clearTimeout(toastTimer); // 連続で出したとき、前のタイマーで新しいメッセージが消えないように
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
 }
+
+
+// ─── 履歴（直近3回の変換結果を、このブラウザの IndexedDB に残す） ─────────
+// ファイルは外部へ送らず、このブラウザの中だけに保存する。
+const HISTORY_MAX = 3;
+const historyArea = document.getElementById('historyArea');
+const historyList = document.getElementById('historyList');
+let historyUrls = [];
+
+const HistoryDB = {
+  open() {
+    return this._p || (this._p = new Promise((res, rej) => {
+      const r = indexedDB.open('convrt', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('runs', { keyPath: 'id' });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('runs', mode);
+      const rq = fn(t.objectStore('runs'));
+      t.oncomplete = () => res(rq && rq.result);
+      t.onerror = t.onabort = () => rej(t.error);
+    });
+  },
+  async all() {
+    const runs = await this.run('readonly', s => s.getAll());
+    return runs.sort((a, b) => b.at - a.at);
+  },
+  put(run) { return this.run('readwrite', s => s.put(run)); },
+  del(id) { return this.run('readwrite', s => s.delete(id)); },
+};
+
+async function addHistoryRun(results) {
+  const at = Date.now();
+  const run = {
+    id: at + '-' + Math.random().toString(36).slice(2, 8),
+    at,
+    files: results.map(r => ({ name: r.name, format: r.format, blob: r.blob })),
+  };
+  try {
+    await HistoryDB.put(run);
+    // 古いものを消して直近3回だけにする
+    const runs = await HistoryDB.all();
+    for (const old of runs.slice(HISTORY_MAX)) await HistoryDB.del(old.id);
+  } catch (e) {
+    console.warn(e);
+    showToast('履歴に保存できませんでした（ブラウザの保存容量が足りない可能性があります）');
+  }
+  renderHistory();
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function formatWhen(ms) {
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function renderHistory() {
+  let runs = [];
+  try { runs = await HistoryDB.all(); } catch (e) { /* IndexedDB が使えないときは履歴を出さない */ }
+  historyUrls.forEach(u => URL.revokeObjectURL(u));
+  historyUrls = [];
+  historyList.replaceChildren();
+  historyArea.style.display = runs.length ? 'block' : 'none';
+
+  runs.forEach((run, i) => {
+    const group = document.createElement('div');
+    group.className = 'history-run';
+
+    const head = document.createElement('div');
+    head.className = 'history-head';
+    const label = document.createElement('div');
+    label.className = 'history-label';
+    const total = run.files.reduce((n, f) => n + f.blob.size, 0);
+    label.textContent = `${i === 0 ? '最新' : i + '回前'} · ${formatWhen(run.at)} · ${run.files.length} ファイル · ${formatSize(total)}`;
+    head.appendChild(label);
+
+    if (run.files.length > 1) {
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.className = 'btn-dl';
+      all.textContent = 'すべて保存';
+      all.addEventListener('click', () => {
+        run.files.forEach((f, j) => setTimeout(() => saveBlob(f.blob, f.name), j * 300));
+      });
+      head.appendChild(all);
+    }
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn-dl history-del';
+    del.textContent = '削除';
+    del.addEventListener('click', async () => {
+      try { await HistoryDB.del(run.id); } catch (e) { showToast('削除できませんでした'); }
+      renderHistory();
+    });
+    head.appendChild(del);
+    group.appendChild(head);
+
+    run.files.forEach(f => {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `
+        <span class="result-icon">${ICON_CHECK}</span>
+        <div class="result-info">
+          <div class="result-name"></div>
+          <div class="result-size"></div>
+        </div>
+        <a class="btn-dl">保存</a>`;
+      card.querySelector('.result-name').textContent = f.name;
+      card.querySelector('.result-size').textContent = `${f.format} · ${formatSize(f.blob.size)}`;
+      const url = URL.createObjectURL(f.blob);
+      historyUrls.push(url);
+      const dl = card.querySelector('.btn-dl');
+      dl.href = url;
+      dl.download = f.name;
+      group.appendChild(card);
+    });
+
+    historyList.appendChild(group);
+  });
+}
+
+renderHistory();

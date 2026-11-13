@@ -1,7 +1,7 @@
 /*
  * Vercel の Postgres（Vercel Marketplace の Neon）への接続。
  * Vercel で Storage を接続すると DATABASE_URL（または POSTGRES_URL）が自動で設定される。
- * テーブルは最初のリクエストで自動作成する。
+ * テーブル（sites: Making Site / decks: スライド）は最初のリクエストで自動作成する。
  */
 const { Pool } = require('pg');
 
@@ -30,6 +30,16 @@ const SCHEMA = `
     updated_at  timestamptz NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS sites_uid_created_idx ON sites (uid, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS decks (
+    uid         text NOT NULL,
+    id          text NOT NULL,
+    title       text NOT NULL DEFAULT '',
+    data        jsonb NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (uid, id)
+  );
 `;
 
 async function query(text, params) {

@@ -363,3 +363,45 @@ footer{
     font-size:16px;
   }
 }
+
+/* 履歴 */
+.history #historyList{
+  width:90%;
+  max-width:650px;
+  margin:0 auto;
+}
+
+.historyItem{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 0;
+  border-bottom:1px solid #ddd;
+  text-align:left;
+}
+
+.historyInfo{
+  flex:1;
+  min-width:0;
+  font-size:16px;
+}
+
+.historyItem button{
+  margin-top:0;
+  padding:8px 16px;
+  font-size:15px;
+}
+
+.historyItem .historyDelete{
+  background:white;
+  color:#333;
+  border:1px solid #999;
+}
+
+.historyEmpty{
+  color:#888;
+}
+
+@media print{
+  .history{ display:none; }
+}

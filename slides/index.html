@@ -27,9 +27,13 @@
       <button class="btn" id="importBtn" type="button">ファイルから読み込む</button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
+    <div class="migrate" id="migrate" hidden>
+      <span id="migrateText"></span>
+      <button class="btn" id="migrateBtn" type="button">アカウントに移す</button>
+    </div>
     <div class="grid" id="decks"></div>
     <p class="empty" id="empty" hidden>まだスライドがありません。上のテンプレートを選ぶと作り始められます。</p>
-    <p class="note">スライドはこのブラウザの中に保存されます。別の端末で使うときは「書き出し」でファイルにして、読み込んでください。</p>
+    <p class="note" id="storageNote">読み込み中…</p>
   </section>
 </div>
 

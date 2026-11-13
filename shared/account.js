@@ -201,3 +201,28 @@ export const sites = {
     await api('/api/sites?id=' + enc(id), { method: 'DELETE' });
   },
 };
+
+/* ---------- スライドのデッキ ---------- */
+
+export const decks = {
+  /** 一覧：{ id, title, theme, first（1枚目）, count（枚数）, created, updated } */
+  async list() {
+    return (await api('/api/decks')).decks;
+  },
+  /** デッキ全体。見つからなければ null */
+  async get(id) {
+    try {
+      return (await api('/api/decks?id=' + enc(id))).deck;
+    } catch (e) {
+      if (e.status === 404) return null;
+      throw e;
+    }
+  },
+  /** 保存（無ければ作成） */
+  async put(deck) {
+    await api('/api/decks?id=' + enc(deck.id), { method: 'PUT', body: deck });
+  },
+  async remove(id) {
+    await api('/api/decks?id=' + enc(id), { method: 'DELETE' });
+  },
+};

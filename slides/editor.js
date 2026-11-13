@@ -27,17 +27,28 @@ const snap = () => JSON.stringify({ slides: deck.slides, cur });
 
 function setStatus(s) { $('#status').textContent = s; }
 
+let unsaved = false;   // まだ保存先に届いていない変更があるか
+let remote = false;    // アカウント（Vercel）に保存しているか
+
 async function save() {
   clearTimeout(saveT);
-  try { await DB.put(deck); setStatus('保存済み'); }
-  catch (e) { setStatus('保存できませんでした'); }
+  const at = deck.updated;
+  try {
+    await Store.put(deck);
+    if (deck.updated === at) { unsaved = false; setStatus('保存済み'); }
+  } catch (e) {
+    console.warn(e);
+    setStatus('保存できませんでした');
+  }
 }
 
 function touch() {
   deck.updated = Date.now();
+  unsaved = true;
   setStatus('保存中…');
   clearTimeout(saveT);
-  saveT = setTimeout(save, 400);
+  // ネット越しに保存するときは、送る回数を減らすため少し長めに待つ
+  saveT = setTimeout(save, remote ? 1200 : 400);
 }
 
 function commit() {
@@ -805,12 +816,35 @@ addEventListener('afterprint', () => $('#printArea').replaceChildren());
 /* ---------- はじめる ---------- */
 addEventListener('resize', () => { fit(); if (!$('#present').hidden) showP(); });
 new ResizeObserver(fit).observe($('#work'));
-addEventListener('pagehide', () => { endEdit(); if (deck) DB.put(deck).catch(() => {}); });
+addEventListener('pagehide', () => { endEdit(); if (deck && unsaved) Store.put(deck).catch(() => {}); });
+/* アカウントへの保存が終わっていないうちにページを閉じようとしたら確認する */
+addEventListener('beforeunload', e => {
+  if (!deck || !remote) return;
+  endEdit();
+  if (unsaved) { save(); e.preventDefault(); e.returnValue = ''; }
+});
+/* 一覧へ戻るときは、保存を済ませてから移動する */
+document.querySelector('.bar.top a[href="index.html"]').addEventListener('click', async e => {
+  if (!deck) return;
+  e.preventDefault();
+  endEdit();
+  if (unsaved) {
+    await save();
+    if (unsaved && !confirm('保存できていない変更があります。このまま一覧へ戻りますか？')) return;
+  }
+  unsaved = false;
+  location.href = 'index.html';
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden && deck) { endEdit(); save(); } });
 
 (async function init() {
   const id = new URLSearchParams(location.search).get('id');
-  try { deck = id && await DB.get(id); } catch (e) { deck = null; }
+  remote = !!(await Store.remote());
+  try { deck = id && await Store.get(id); } catch (e) {
+    console.warn(e);
+    alert('スライドを読み込めませんでした：' + Store.errorText(e));
+    deck = null;
+  }
   if (!deck) { location.replace('index.html'); return; }
   theme = themeOf(deck.theme);
 

@@ -171,6 +171,24 @@ function makeSeats(){
     seatMap[emptyIndexes[index]] = student;
   });
 
+  renderSeats(layout, alignType, seatMap);
+
+  // 履歴に残す（直近3回まで）
+  addHistory(layout, alignType, seatMap);
+}
+
+// HTML に入れる文字を安全にする
+function escapeHTML(str){
+  return String(str == null ? "" : str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+// 座席表を表示する（席替えした直後と、履歴から開いたときに使う）
+function renderSeats(layout, alignType, seatMap){
+
+  const maxRows = Math.max(...layout);
+
   // ===== 表示 =====
 
   const seatArea = document.getElementById("seatArea");
@@ -239,17 +257,17 @@ function makeSeats(){
 
         seat.innerHTML = `
           <div class="furigana">
-            ${student.furigana}
+            ${escapeHTML(student.furigana)}
           </div>
 
           <div class="nameRow">
 
             <div class="number">
-              ${student.number}
+              ${escapeHTML(student.number)}
             </div>
 
             <div class="name">
-              ${student.name}
+              ${escapeHTML(student.name)}
             </div>
 
           </div>
@@ -277,6 +295,126 @@ function makeSeats(){
   window.currentLayout = layout;
   window.currentMaxRows = maxRows;
 }
+
+// ===== 履歴（直近3回まで、このブラウザに保存） =====
+
+const HISTORY_KEY = "changeSeats.history";
+const HISTORY_MAX = 3;
+
+function loadHistory(){
+  try{
+    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function storeHistory(list){
+  try{
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+  }catch(e){
+    // 保存できなくても席替え自体は使えるようにする
+  }
+  renderHistory();
+}
+
+const valueOf = id => document.getElementById(id).value;
+
+function addHistory(layout, alignType, seatMap){
+  const list = loadHistory();
+  list.unshift({
+    at: Date.now(),
+    layout,
+    alignType,
+    seatMap,
+    // 入力欄もそのまま戻せるように控えておく
+    inputs: {
+      nameInput: valueOf("nameInput"),
+      furiganaInput: valueOf("furiganaInput"),
+      frontInput: valueOf("frontInput"),
+      sheetTitle: valueOf("sheetTitle"),
+      pdfSize: valueOf("pdfSize"),
+      layoutInput: valueOf("layoutInput"),
+      alignType: valueOf("alignType")
+    }
+  });
+  storeHistory(list);
+}
+
+function openHistory(index){
+  const entry = loadHistory()[index];
+  if(!entry) return;
+
+  Object.entries(entry.inputs || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if(el && typeof value === "string") el.value = value;
+  });
+
+  document.getElementById("displayTitle").textContent =
+    (entry.inputs && entry.inputs.sheetTitle) || "";
+
+  renderSeats(entry.layout, entry.alignType, entry.seatMap);
+
+  document.getElementById("pdfTarget").scrollIntoView({ behavior: "smooth" });
+}
+
+function deleteHistory(index){
+  const list = loadHistory();
+  list.splice(index, 1);
+  storeHistory(list);
+}
+
+function formatTime(ms){
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderHistory(){
+  const box = document.getElementById("historyList");
+  if(!box) return;
+
+  const list = loadHistory();
+  box.replaceChildren();
+
+  if(list.length === 0){
+    const empty = document.createElement("p");
+    empty.className = "historyEmpty";
+    empty.textContent = "まだ履歴はありません";
+    box.appendChild(empty);
+    return;
+  }
+
+  list.forEach((entry, i) => {
+    const row = document.createElement("div");
+    row.className = "historyItem";
+
+    const info = document.createElement("div");
+    info.className = "historyInfo";
+    const count = (entry.seatMap || []).filter(Boolean).length;
+    const title = (entry.inputs && entry.inputs.sheetTitle) || "タイトルなし";
+    info.textContent = `${i === 0 ? "最新" : i + "回前"}：${formatTime(entry.at)}　${title}（${count}人）`;
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.textContent = "表示";
+    openBtn.addEventListener("click", () => openHistory(i));
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "historyDelete";
+    delBtn.textContent = "削除";
+    delBtn.addEventListener("click", () => {
+      if(confirm("この履歴を削除しますか？")) deleteHistory(i);
+    });
+
+    row.append(info, openBtn, delBtn);
+    box.appendChild(row);
+  });
+}
+
+renderHistory();
 
 // PDF保存
 async function savePDF(){

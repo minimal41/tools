@@ -13,43 +13,7 @@
 const crypto = require('node:crypto');
 const { requireUser, httpError } = require('./_lib/auth');
 const db = require('./_lib/db');
-
-const MAX_BODY = 4 * 1024 * 1024; // Vercel の上限（4.5MB）より少し小さく
-
-function send(res, status, data) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(data === undefined ? '' : JSON.stringify(data));
-}
-
-function cors(res) {
-  // 認証は Cookie ではなく Authorization ヘッダーなので、どのオリジンから呼ばれても安全
-  // （GitHub Pages など別の場所に置いたページからも使えるようにする）
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-  res.setHeader('Access-Control-Max-Age', '86400');
-}
-
-async function readBody(req) {
-  if (req.body !== undefined && req.body !== null && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
-    return req.body; // Vercel が JSON を解析済み
-  }
-  let raw = typeof req.body === 'string' ? req.body : Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
-  if (!raw) {
-    const chunks = [];
-    let size = 0;
-    for await (const c of req) {
-      size += c.length;
-      if (size > MAX_BODY) throw httpError(413, 'サイトのデータが大きすぎて保存できません。画像を小さくしてください。');
-      chunks.push(c);
-    }
-    raw = Buffer.concat(chunks).toString('utf8');
-  }
-  if (raw.length > MAX_BODY) throw httpError(413, 'サイトのデータが大きすぎて保存できません。画像を小さくしてください。');
-  try { return raw ? JSON.parse(raw) : {}; } catch { throw httpError(400, 'データの形式が正しくありません。'); }
-}
+const { send, readBody, route, iso } = require('./_lib/http');
 
 /* 受け取ってよい項目だけを取り出して型を確かめる */
 function pickFields(body) {
@@ -70,8 +34,6 @@ function pickFields(body) {
   return out;
 }
 
-const iso = (d) => (d instanceof Date ? d.toISOString() : d);
-
 function toSite(row, full) {
   const site = {
     id: row.id,
@@ -87,13 +49,8 @@ function toSite(row, full) {
   return site;
 }
 
-module.exports = async function handler(req, res) {
-  cors(res);
-  if (req.method === 'OPTIONS') return send(res, 204);
-
-  try {
+module.exports = route(async (req, res, url) => {
     const user = await requireUser(req);
-    const url = new URL(req.url, 'http://localhost');
     const id = url.searchParams.get('id');
 
     if (req.method === 'GET' && !id) {
@@ -145,8 +102,4 @@ module.exports = async function handler(req, res) {
 
     res.setHeader('Allow', 'GET, POST, PUT, DELETE, OPTIONS');
     throw httpError(405, 'この操作には対応していません。');
-  } catch (e) {
-    if (!e.status) console.error(e);
-    return send(res, e.status || 500, { error: e.status ? e.message : 'サーバーでエラーが発生しました。' });
-  }
-};
+});
