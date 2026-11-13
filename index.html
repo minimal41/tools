@@ -316,6 +316,8 @@
 <script type="module">
 import * as account from './shared/account.js';
 
+window.__toolsAccountLoaded = true;
+
 const $ = (id) => document.getElementById(id);
 const dialog = $('authDialog');
 const form = $('authForm');
@@ -417,6 +419,18 @@ if (requested === 'login' || requested === 'signup') {
     else if (!user) openDialog(requested);
   });
 }
+</script>
+
+<script>
+/* アカウント機能（shared/account.js）が読み込めなかったときは、ボタンが出ないままになるので案内を出す */
+addEventListener('load', function () {
+  setTimeout(function () {
+    if (window.__toolsAccountLoaded) return;
+    var n = document.getElementById('accountNotice');
+    n.hidden = false;
+    n.textContent = 'アカウント機能を読み込めませんでした。通信状況を確認するか、管理者は shared/config.js（「export const firebaseConfig」になっているか）を確認してください。';
+  }, 3000);
+});
 </script>
 </body>
 </html>

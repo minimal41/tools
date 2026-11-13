@@ -5,11 +5,12 @@
  *
  * Firebase コンソール →「プロジェクトの設定」→「マイアプリ」→ ウェブアプリの
  * firebaseConfig の値をそのまま貼り付けてください。
- * 必要な準備は README.md の「アカウント（Firebase）」を参照。
+ * 必要な準備は README.md の「アカウントとデータ保存」を参照。
+ * 貼り付けるときは、先頭の「export」を消さないこと（消すとログインが動かなくなる）。
  *
  * ※ この値は公開しても問題ない識別子です（データは firestore.rules で保護します）。
  */
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyD9XlO1cCIZEPldyIRWqsjEe7cP3ToINkM",
   authDomain: "minimal41-tools.firebaseapp.com",
   projectId: "minimal41-tools",
