@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Making Site</title>
+<style>
+  :root{
+    --shell-bg: #eeeeec;
+    --panel-bg: #ffffff;
+    --panel-bg-2: #f0f0ed;
+    --line: #d6d6d2;
+    --text: #0f0f0d;
+    --text-dim: #6b6b64;
+    --accent: #1642e0;
+    --danger: #c8241a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;background:var(--shell-bg);color:var(--text);}
+  body{padding:0;}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 24px;background:var(--panel-bg);border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;letter-spacing:.01em;}
+  .brand .dot{width:9px;height:9px;border-radius:2px;background:var(--accent);}
+
+  .auth-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    padding:10px 24px;background:var(--panel-bg-2);border-bottom:1px solid var(--line);font-size:13px;
+  }
+  .auth-status{color:var(--text-dim);}
+  .auth-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  @media (max-width: 640px){
+    .auth-bar{padding:10px 16px;}
+  }
+
+  button, .btn{
+    font-family:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel-bg-2);
+    color:var(--text);border-radius:3px;padding:7px 13px;font-size:13px;
+    text-decoration:none;display:inline-block;
+  }
+  button:hover, .btn:hover{border-color:var(--accent);color:var(--accent);}
+  button.primary, .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+  button.primary:hover, .btn.primary:hover{background:#0f2fa8;border-color:#0f2fa8;color:#fff;}
+  button.danger:hover{border-color:var(--danger);color:var(--danger);}
+
+  .wrap{max-width:900px;margin:0 auto;padding:32px 24px 80px;}
+  .wrap h1{font-size:24px;font-weight:800;letter-spacing:-.01em;margin:0 0 6px;}
+  .wrap .lead{color:var(--text-dim);font-size:13px;margin:0 0 28px;}
+
+  .empty{
+    border:1px dashed var(--line);border-radius:3px;padding:60px 20px;text-align:center;
+    color:var(--text-dim);font-size:14px;background:var(--panel-bg);
+  }
+
+  .site-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .site-card{
+    background:var(--panel-bg);border:1px solid var(--line);border-radius:3px;
+    padding:16px;display:flex;flex-direction:column;gap:10px;
+  }
+  .site-card h2{font-size:15px;margin:0;word-break:break-word;font-weight:700;}
+  .site-card .meta{font-size:12px;color:var(--text-dim);}
+  .site-card .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:8px;}
+  .site-card .actions button, .site-card .actions .btn{flex:1 1 calc(50% - 3px);text-align:center;min-width:80px;}
+
+  /* ログインしていないときは、サイト一覧の代わりにランディング（案内）ページを表示する */
+  .landing{display:none;}
+  body.logged-out .landing{display:block;}
+  body.logged-out .dashboard{display:none;}
+  body.logged-in .landing{display:none;}
+  body.logged-in .dashboard{display:block;}
+
+  body.logged-out{
+    background:linear-gradient(180deg, #eef2ff 0%, var(--shell-bg) 340px);
+  }
+
+  .landing-hero{
+    max-width:720px;margin:0 auto;padding:72px 24px 40px;text-align:center;
+  }
+  .landing-hero h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:0 0 14px;}
+  .landing-hero p{font-size:15px;color:var(--text-dim);line-height:1.8;margin:0 0 28px;}
+  .landing-cta{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;}
+  .landing-cta .btn{padding:11px 24px;font-size:14px;}
+
+  .landing-features{
+    max-width:820px;margin:0 auto;padding:0 24px 80px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;
+  }
+  .landing-feature{
+    background:var(--panel-bg);border:1px solid var(--line);border-radius:6px;padding:18px 16px;
+  }
+  .landing-feature .icon{font-size:20px;margin-bottom:8px;}
+  .landing-feature h3{font-size:14px;margin:0 0 6px;font-weight:700;}
+  .landing-feature p{font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:0;}
+
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#c7c7c2;border-radius:3px;}
+
+  @media (max-width: 640px){
+    .topbar{padding:12px 16px;flex-wrap:wrap;gap:10px;}
+    .brand{font-size:14px;}
+    .wrap{padding:20px 16px 60px;}
+    .wrap h1{font-size:20px;}
+    .site-grid{grid-template-columns:1fr;gap:12px;}
+    .site-card .actions button, .site-card .actions .btn{flex:1 1 100%;}
+    .landing-hero{padding:48px 16px 32px;}
+    .landing-hero h1{font-size:24px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>Making Site</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a class="btn" href="../index.html">← Tools</a>
+    <a class="btn primary" href="edit.html">＋ 新しいサイトを作る</a>
+  </div>
+</div>
+
+<div class="auth-bar" id="authBar">
+  <div id="authStatus" class="auth-status">読み込み中…</div>
+  <div id="authLoggedOut" class="auth-form" style="display:none;">
+    <span class="auth-status">Tools のアカウントでログインすると、保存したサイト一覧が使えます</span>
+    <a href="../index.html?account=login" id="authLoginLink" class="btn primary">ログイン</a>
+    <a href="../index.html?account=signup" id="authSignupLink" class="btn">アカウント作成</a>
+  </div>
+  <div id="authLoggedIn" class="auth-form" style="display:none;">
+    <span id="authEmailDisplay"></span>
+    <a href="../index.html" class="btn">アカウント（Tools）</a>
+  </div>
+</div>
+
+<div class="landing">
+  <div class="landing-hero">
+    <h1>あなたのサイトを、もっと簡単に。</h1>
+    <p>「Making Site」でパーツを選ぶだけで、自分だけのホームページが作れます。<br>Tools のアカウントでログインすると、作ったサイトをいつでも呼び出して編集・再ダウンロードできます。</p>
+    <div class="landing-cta">
+      <a href="../index.html?account=login" class="btn primary auth-login-link">ログイン</a>
+      <a href="../index.html?account=signup" class="btn auth-signup-link">アカウント作成</a>
+      <a href="edit.html" class="btn">ログインせずに作ってみる</a>
+    </div>
+  </div>
+  <div class="landing-features">
+    <div class="landing-feature">
+      <div class="icon">🧩</div>
+      <h3>パーツを組み立てるだけ</h3>
+      <p>見出し・画像・ボタンなどのパーツをドラッグ＆ドロップして、自由にページを組み立てられます。</p>
+    </div>
+    <div class="landing-feature">
+      <div class="icon">☁️</div>
+      <h3>作業内容を自動保存</h3>
+      <p>ログインしていれば、編集中の内容が自動でクラウドに保存されます。</p>
+    </div>
+    <div class="landing-feature">
+      <div class="icon">📥</div>
+      <h3>HTMLをダウンロード</h3>
+      <p>完成したサイトはHTMLファイルとしてダウンロードして、どこでも公開できます。</p>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard wrap">
+  <h1>これまでに作ったサイト</h1>
+  <p class="lead">「Making Site」の編集画面でHTMLをダウンロードするたびに、このアカウントに一覧として保存されます。</p>
+
+  <div id="siteList"></div>
+</div>
+
+<script type="module">
+import * as account from '../shared/account.js';
+
+let currentUser = null;
+let cachedSites = [];
+
+/* --- ログイン状態の表示切り替え（ログイン・アカウント作成は Tools のホームで行う） --- */
+function renderAuthUI(user){
+  const statusEl = document.getElementById('authStatus');
+  const loggedOutEl = document.getElementById('authLoggedOut');
+  const loggedInEl = document.getElementById('authLoggedIn');
+
+  statusEl.style.display = 'none';
+
+  document.getElementById('authLoginLink').href = account.loginUrl('../index.html', 'login');
+  document.getElementById('authSignupLink').href = account.loginUrl('../index.html', 'signup');
+  document.querySelectorAll('.auth-login-link').forEach(a => a.href = account.loginUrl('../index.html', 'login'));
+  document.querySelectorAll('.auth-signup-link').forEach(a => a.href = account.loginUrl('../index.html', 'signup'));
+
+  if(user){
+    document.body.classList.remove('logged-out');
+    document.body.classList.add('logged-in');
+    loggedOutEl.style.display = 'none';
+    loggedInEl.style.display = 'flex';
+    document.getElementById('authEmailDisplay').textContent = user.displayName || user.email;
+  } else {
+    document.body.classList.remove('logged-in');
+    document.body.classList.add('logged-out');
+    loggedInEl.style.display = 'none';
+    loggedOutEl.style.display = 'flex';
+  }
+}
+
+account.onUserChanged((user)=>{
+  currentUser = user;
+  renderAuthUI(user);
+  render();
+});
+
+/* --- サイト一覧の読み込み（Firestore から） --- */
+async function loadSites(){
+  if(!currentUser){
+    cachedSites = [];
+    return [];
+  }
+  try{
+    cachedSites = await account.sites.list();
+  }catch(error){
+    console.warn('サイト一覧の読み込みに失敗しました', error);
+    cachedSites = [];
+  }
+  return cachedSites;
+}
+
+function formatDate(iso){
+  try{
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0')
+      + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }catch(e){ return ''; }
+}
+
+function escapeHTML(str){
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+async function render(){
+  const container = document.getElementById('siteList');
+
+  if(!currentUser){
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `<div class="empty">読み込み中…</div>`;
+  const sites = await loadSites();
+
+  if(sites.length === 0){
+    container.innerHTML = `<div class="empty">まだサイトが保存されていません。<br>編集画面でサイトを作ってダウンロードすると、ここに表示されます。</div>`;
+    return;
+  }
+
+  container.innerHTML = `<div class="site-grid">` + sites.map(site => `
+    <div class="site-card" data-id="${escapeHTML(site.id)}">
+      <h2>${escapeHTML(site.title || '無題のサイト')}${site.html ? '' : ' <span style="font-size:11px;font-weight:400;color:var(--text-dim);border:1px solid var(--line);border-radius:2px;padding:1px 6px;">下書き</span>'}</h2>
+      <div class="meta">保存日時: ${formatDate(site.created_at)}</div>
+      <div class="actions">
+        <a href="edit.html?site=${encodeURIComponent(site.id)}" class="btn primary open-edit-btn">開く</a>
+        <button type="button" class="open-btn" ${site.html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>プレビュー</button>
+        <button type="button" class="dl-btn" ${site.html ? '' : 'disabled title="まだダウンロードされていません。編集画面で「HTMLをダウンロード」を行うと利用できます。"'}>再ダウンロード</button>
+        <button type="button" class="del-btn danger">削除</button>
+      </div>
+    </div>
+  `).join('') + `</div>`;
+
+  container.querySelectorAll('.site-card').forEach(card=>{
+    const id = card.dataset.id;
+    const site = cachedSites.find(s => s.id === id);
+    if(!site) return;
+
+    if(site.html){
+      card.querySelector('.open-btn').addEventListener('click', ()=>{
+        const blob = new Blob([site.html], {type:'text/html'});
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      });
+
+      card.querySelector('.dl-btn').addEventListener('click', ()=>{
+        const blob = new Blob([site.html], {type:'text/html'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (site.title || 'site') + '.html';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    card.querySelector('.del-btn').addEventListener('click', async ()=>{
+      if(!confirm('この一覧からサイトを削除します。よろしいですか？（ダウンロード済みのファイルは残ります）')) return;
+      try{
+        await account.sites.remove(id);
+      }catch(error){
+        alert('削除に失敗しました: ' + account.errorMessage(error));
+        return;
+      }
+      render();
+    });
+  });
+}
+</script>
+
+</body>
+</html>
