@@ -42,6 +42,91 @@ const FONTS = [
   ['Georgia', F.georgia],
 ];
 
+/* ---------- フォントの読み込み ----------
+ * Google フォントは一覧（gfonts.js）だけ持っておき、使われたときに初めて読み込む。
+ * 自分で追加したフォントは、このブラウザ（IndexedDB）に保存する。 */
+const GF = new Map();
+(typeof GFONTS === 'string' ? GFONTS : '').split(';').forEach(row => {
+  const [name, f, spec] = row.split('|');
+  if (name) GF.set(name, { cat: f[0], ja: f[1] === '1', spec });
+});
+const GF_CAT = { s: 'sans-serif', e: 'serif', m: 'monospace', h: 'cursive', d: 'sans-serif' };
+
+const firstFamily = css => String(css || '').split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+const fontCss = name => `'${name}', ${GF.has(name) ? GF_CAT[GF.get(name).cat] : 'sans-serif'}`;
+const cleanFontName = s => String(s || '').replace(/[^\p{L}\p{N} \-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+
+// ページの <link> で最初から読み込んでいるもの
+const fontLoaded = new Set(['Courier Prime', 'Dela Gothic One', 'Klee One', 'M PLUS Rounded 1c', 'Noto Sans JP',
+  'Noto Serif JP', 'Playfair Display', 'Roboto', 'Shippori Mincho', 'Yusei Magic', 'Zen Kaku Gothic New', 'Zen Maru Gothic']);
+
+/* そのフォントがまだ読み込まれていなければ読み込む */
+function useFont(css) {
+  const name = firstFamily(css);
+  if (!name || fontLoaded.has(name)) return;
+  fontLoaded.add(name);
+  const g = GF.get(name);
+  if (!g) return;
+  const l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css?family=' + encodeURIComponent(name).replace(/%20/g, '+') + ':' + g.spec + '&display=swap';
+  document.head.append(l);
+}
+
+const FontStore = {
+  open() {
+    return this._p || (this._p = new Promise((res, rej) => {
+      const r = indexedDB.open('slides-fonts', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('fonts', { keyPath: 'name' });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('fonts', mode);
+      const rq = fn(t.objectStore('fonts'));
+      t.oncomplete = () => res(rq.result);
+      t.onerror = t.onabort = () => rej(t.error);
+    });
+  },
+  all() { return this.run('readonly', s => s.getAll()); },
+  put(f) { return this.run('readwrite', s => s.put(f)); },
+  del(name) { return this.run('readwrite', s => s.delete(name)); },
+};
+
+/* 自分で追加したフォント：{ name, kind: 'file'（ファイル）| 'name'（端末にあるフォントの名前） } */
+const customFonts = [];
+const customFaces = new Map();
+
+function registerCustom(f) {
+  if (!customFonts.some(c => c.name === f.name)) customFonts.push({ name: f.name, kind: f.kind });
+  if (f.kind !== 'file') return;
+  fontLoaded.add(f.name);
+  const face = new FontFace(f.name, f.data);
+  customFaces.set(f.name, face);
+  document.fonts.add(face);
+  face.load().catch(() => { /* 壊れたファイルは既定の書体で表示される */ });
+}
+
+const customReady = FontStore.all()
+  .then(list => list.sort((a, b) => (a.added || 0) - (b.added || 0)).forEach(registerCustom))
+  .catch(() => { /* 保存領域が使えなくても他は動かす */ });
+
+async function addCustomFont(f) {
+  await FontStore.put({ ...f, added: Date.now() });
+  registerCustom(f);
+}
+
+async function removeCustomFont(name) {
+  await FontStore.del(name);
+  const i = customFonts.findIndex(c => c.name === name);
+  if (i >= 0) customFonts.splice(i, 1);
+  const face = customFaces.get(name);
+  if (face) { document.fonts.delete(face); customFaces.delete(name); fontLoaded.delete(name); }
+}
+
 /* ---------- 保存（IndexedDB） ---------- */
 const DB = {
   open() {
@@ -302,7 +387,7 @@ const num = (v, fb = 0) => Number.isFinite(+v) ? +v : fb;
 
 const OK_TAGS = new Set(['B', 'I', 'U', 'S', 'STRIKE', 'STRONG', 'EM', 'SPAN', 'FONT', 'BR', 'DIV', 'P', 'UL', 'OL', 'LI']);
 const DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'LINK', 'META', 'TEMPLATE', 'NOSCRIPT']);
-const OK_CSS = ['font-weight', 'font-style', 'text-decoration', 'text-decoration-line', 'color', 'font-family', 'font-size'];
+const OK_CSS = ['font-weight', 'font-style', 'text-decoration', 'text-decoration-line', 'color', 'font-family', 'font-size', 'text-align'];
 
 /* 文字の装飾に必要なタグとスタイルだけ残す */
 function sanitize(html) {
@@ -323,7 +408,12 @@ function sanitize(html) {
       const fa = tag === 'FONT' ? ['face', 'color', 'size'].map(k => [k, c.getAttribute(k)]) : [];
       [...c.attributes].forEach(a => c.removeAttribute(a.name));
       for (const p in keep) c.style.setProperty(p, keep[p]);
-      fa.forEach(([k, v]) => { if (v && /^[\p{L}\p{N} #,'"\-]+$/u.test(v)) c.setAttribute(k, v); });
+      if (keep['font-family']) useFont(keep['font-family']);
+      fa.forEach(([k, v]) => {
+        if (!v || !/^[\p{L}\p{N} #,'"\-]+$/u.test(v)) return;
+        c.setAttribute(k, v);
+        if (k === 'face') useFont(v);
+      });
       walk(c);
     });
   })(t.content);
@@ -332,6 +422,7 @@ function sanitize(html) {
 
 function applyTextStyle(t, e) {
   const s = t.style;
+  useFont(safeFont(e.font));
   s.fontFamily = safeFont(e.font);
   s.fontSize = Math.min(400, Math.max(6, num(e.size, 28))) + 'px';
   s.color = safeColor(e.color, '#1d1d1b');

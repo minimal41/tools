@@ -145,8 +145,11 @@ function syncBar() {
   $('[data-act="redo"]').disabled = !redoStack.length;
   if (!el) return;
   if (el.type === 'text') {
-    $('#font').value = el.font;
-    if (document.activeElement !== $('#size')) $('#size').value = el.size;
+    // 入力中は、カーソルのある場所（選んでいる文字）の書式を表示する
+    const cs = editing ? getComputedStyle(selStyleNode()) : null;
+    $('#fontName').textContent = fontLabel(firstFamily(cs ? cs.fontFamily : el.font));
+    if (document.activeElement !== $('#size')) $('#size').value = cs ? Math.round(parseFloat(cs.fontSize)) : el.size;
+    const align = cs ? ({ center: 'center', right: 'right', end: 'right' }[cs.textAlign] || 'left') : (el.align || 'left');
     $('#color').value = hex6(el.color, '#1d1d1b');
     $('#lh').value = String(el.lh || 1.4);
     const cmd = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strikeThrough' };
@@ -156,13 +159,13 @@ function syncBar() {
       if (editing) { try { on = document.queryCommandState(cmd[k]); } catch (e) { /* 対応していない環境 */ } }
       b.classList.toggle('on', on);
     });
-    $$('[data-align]').forEach(b => b.classList.toggle('on', (el.align || 'left') === b.dataset.align));
+    $$('[data-align]').forEach(b => b.classList.toggle('on', align === b.dataset.align));
     $$('[data-va]').forEach(b => b.classList.toggle('on', (el.va || 'top') === b.dataset.va));
     $('[data-act="list"]').disabled = !editing;
   } else if (el.type === 'shape') {
     $('#fill').value = hex6(el.fill, '#ffffff');
     $('#stroke').value = hex6(el.stroke, '#1d1d1b');
-    $('#sw').value = String(el.sw || 0);
+    if (document.activeElement !== $('#sw')) $('#sw').value = String(el.sw || 0);
     $('#radius').value = String(el.radius || 0);
     $('#radius').disabled = el.shape === 'ellipse';
   }
@@ -256,12 +259,30 @@ function withSel(fn) {
 
 const hasRange = () => editing && savedRange && !savedRange.collapsed;
 
+/* 選択範囲の先頭の文字が入っている要素（ツールバーに今の書式を出すために使う） */
+function selStyleNode() {
+  const t = nodeOf(editing).firstChild;
+  if (!savedRange) return t;
+  let n = savedRange.startContainer;
+  const o = savedRange.startOffset;
+  if (n.nodeType === 1) {
+    n = n.childNodes[o] || n;
+  } else if (!savedRange.collapsed && o === n.length) {
+    // 範囲が文字の切れ目から始まっているときは、次の文字を見る
+    const w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+    w.currentNode = n;
+    n = w.nextNode() || n;
+  }
+  while (n && n.nodeType !== 1) n = n.parentNode;
+  return n && t.contains(n) ? n : t;
+}
+
 const FONT_ATTR = { 'font-family': 'face', 'color': 'color', 'font-size': 'size' };
 
 function stripProp(root, prop) {
   root.querySelectorAll('*').forEach(c => {
     c.style.removeProperty(prop);
-    if (c.tagName === 'FONT') c.removeAttribute(FONT_ATTR[prop]);
+    if (c.tagName === 'FONT' && FONT_ATTR[prop]) c.removeAttribute(FONT_ATTR[prop]);
   });
 }
 
@@ -351,7 +372,55 @@ function toggleFmt(k) {
   }
 }
 
-/* 箱全体にかかる設定（揃え・行間など） */
+/* 左右の揃え。入力中は選んでいる行だけ、そうでなければ箱全体 */
+function setAlign(a) {
+  const el = selEl();
+  if (!el || el.type !== 'text') return;
+  if (editing) {
+    withSel(t => alignLines(t, a));
+    syncBar();
+  } else {
+    el.align = a;
+    el.html = stripHtml(el.html, 'text-align');
+    commit();
+    renderStage();
+  }
+}
+
+/* 選択範囲にかかっている行を、行ごとの div にして揃えを付ける */
+function alignLines(t, a) {
+  const r = savedRange;
+  const pos = r && { sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+  const isBlock = n => n.nodeType === 1 && /^(DIV|P|UL|OL)$/.test(n.tagName);
+  // まず、箱の直下にある裸の文字列を <br> 区切りで行（div）にまとめる
+  let line = null;
+  [...t.childNodes].forEach(n => {
+    if (isBlock(n)) { line = null; return; }
+    if (!line) { line = document.createElement('div'); t.insertBefore(line, n); }
+    if (n.nodeName === 'BR') { if (!line.firstChild) line.append(n); else n.remove(); line = null; }
+    else line.append(n);
+  });
+  // 行にまとめる間に選択が外れるので、元の位置に戻す
+  const range = document.createRange();
+  try {
+    if (!pos || pos.sc === t || pos.ec === t || !t.contains(pos.sc) || !t.contains(pos.ec)) throw new Error('whole');
+    range.setStart(pos.sc, pos.so);
+    range.setEnd(pos.ec, pos.eo);
+  } catch (e) {
+    range.selectNodeContents(t);
+    if (pos && pos.sc === pos.ec && pos.so === pos.eo && !t.textContent) range.collapse(true);
+  }
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  const blocks = [...t.children].filter(b => range.intersectsNode(b));
+  (blocks.length ? blocks : [...t.children]).forEach(b => {
+    stripProp(b, 'text-align');
+    b.style.textAlign = a;
+  });
+}
+
+/* 箱全体にかかる設定（行間・上下の位置など） */
 function setBox(key, val, live) {
   const el = selEl();
   if (!el) return;
@@ -584,10 +653,20 @@ $('#work').addEventListener('drop', e => {
 });
 
 /* ページ一覧 */
+let panelFocus = false;   // ページ一覧を操作中か（Delete / Backspace でスライドを消せる）
+function setPanelFocus(on) {
+  panelFocus = on;
+  document.body.classList.toggle('panel-focus', on);
+}
 thumbs.addEventListener('click', e => {
   const it = e.target.closest('.thumb-item');
-  if (it) go(+it.dataset.i);
+  if (!it) return;
+  go(+it.dataset.i);
+  document.activeElement?.blur();
+  setPanelFocus(true);
 });
+// 一覧の外を触ったら、一覧の操作はおしまい
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#panel')) setPanelFocus(false); }, true);
 let dragFrom = null;
 thumbs.addEventListener('dragstart', e => {
   const it = e.target.closest('.thumb-item');
@@ -634,7 +713,6 @@ const ACTIONS = {
 function stepSize(d) {
   const el = selEl();
   if (el?.type === 'text') setText('size', clamp((+$('#size').value || el.size) + d, 6, 400));
-  $('#size').value = selEl()?.size ?? '';
 }
 
 // ボタンを押しても入力中の選択が外れないようにする
@@ -650,10 +728,11 @@ document.addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.act) ACTIONS[b.dataset.act]?.();
   else if (b.dataset.fmt) toggleFmt(b.dataset.fmt);
-  else if (b.dataset.align) setBox('align', b.dataset.align);
+  else if (b.dataset.align) setAlign(b.dataset.align);
   else if (b.dataset.va) setBox('va', b.dataset.va);
   else if (b.dataset.shape) addShape(b.dataset.shape);
   else if (b.dataset.layout) addSlide(b.dataset.layout);
+  else if (b.dataset.font) pickFont(b.dataset.font);
 });
 
 function closePops(except) { $$('.pop.open').forEach(p => { if (p.id !== except) p.classList.remove('open'); }); }
@@ -661,6 +740,7 @@ function closePops(except) { $$('.pop.open').forEach(p => { if (p.id !== except)
 function togglePop(btn) {
   const p = document.getElementById(btn.dataset.pop);
   if (p.classList.toggle('open')) {
+    if (p.id === 'popFont') { $('#fontQ').value = ''; renderFontList(); }
     const r = btn.getBoundingClientRect();
     p.style.left = clamp(r.left, 8, innerWidth - p.offsetWidth - 8) + 'px';
     const below = r.bottom + 4;
@@ -668,7 +748,212 @@ function togglePop(btn) {
   }
 }
 
-$('#font').addEventListener('change', e => setText('font', e.target.value));
+/* ---------- フォントの選択 ----------
+ * ふだんは日本語フォントと、自分で追加・選択したフォントだけを並べる。
+ * それ以外の Google フォントは検索して選ぶと、次からは一覧に並ぶ。 */
+const SYSTEM_FONTS = [['Arial', F.arial], ['Times New Roman', F.times], ['Georgia', F.georgia]];
+const JA_FONTS = (() => {
+  const list = FONTS.slice(0, 9).map(([label, css]) => ({ label, css, name: firstFamily(css), ja: true }));
+  const have = new Set(list.map(f => f.name));
+  GF.forEach((g, name) => { if (g.ja && !have.has(name)) list.push({ label: name, css: fontCss(name), name, ja: true }); });
+  return list;
+})();
+const JA_NAMES = new Set(JA_FONTS.map(f => f.name));
+const ALL_FONTS = (() => {
+  const list = [...JA_FONTS];
+  const have = new Set(JA_NAMES);
+  [...FONTS.slice(9), ...SYSTEM_FONTS].forEach(([label, css]) => {
+    const name = firstFamily(css);
+    if (!have.has(name)) { have.add(name); list.push({ label, css, name }); }
+  });
+  GF.forEach((g, name) => { if (!have.has(name)) list.push({ label: name, css: fontCss(name), name }); });
+  return list;
+})();
+const fontByName = new Map(ALL_FONTS.map(f => [f.name, f]));
+const fontLabel = name => fontByName.get(name)?.label || name;
+
+let picked = [];
+try { picked = JSON.parse(localStorage.getItem('slides.pickedFonts') || '[]').filter(n => typeof n === 'string'); } catch (e) { /* 空のまま */ }
+function savePicked() {
+  try { localStorage.setItem('slides.pickedFonts', JSON.stringify(picked)); } catch (e) { /* 保存できなくても動かす */ }
+}
+
+/* このスライドで使っているフォントの名前 */
+function usedFonts() {
+  const set = new Set();
+  deck.slides.forEach(sl => sl.els.forEach(e => {
+    if (e.type !== 'text') return;
+    set.add(firstFamily(e.font));
+    for (const m of String(e.html || '').replace(/&quot;/g, "'").matchAll(/font-family:\s*([^;"]+)/g)) set.add(firstFamily(m[1]));
+  }));
+  set.delete('');
+  return set;
+}
+
+/* 一覧の項目を、その書体で表示する。まだ読み込んでいない Google フォントは、
+   名前に使う文字だけの小さなデータを取り寄せる */
+const previews = new Map();
+const SAMPLE = 'あア永';
+function showPreview(btn) {
+  const name = btn.dataset.name;
+  if (fontLoaded.has(name) || !GF.has(name)) { btn.style.fontFamily = btn.dataset.font; return; }
+  let p = previews.get(name);
+  if (!p) {
+    const g = GF.get(name);
+    const url = 'https://fonts.googleapis.com/css?family=' + encodeURIComponent(name).replace(/%20/g, '+') + ':' + g.spec.split(',')[0]
+      + '&text=' + encodeURIComponent(name + (g.ja ? SAMPLE : ''));
+    p = fetch(url).then(r => r.ok ? r.text() : Promise.reject(new Error(r.status)))
+      .then(css => {
+        const m = css.match(/url\((https:\/\/[^)]+)\)/);
+        if (!m) throw new Error('no font');
+        const face = new FontFace('pv ' + name, `url(${m[1]})`);
+        document.fonts.add(face);
+        return face.load();
+      });
+    previews.set(name, p);
+  }
+  p.then(() => { btn.style.fontFamily = `'pv ${name}', sans-serif`; }).catch(() => { /* 名前だけ表示する */ });
+}
+const previewIO = new IntersectionObserver(list => list.forEach(en => {
+  if (!en.isIntersecting) return;
+  previewIO.unobserve(en.target);
+  showPreview(en.target);
+}), { root: $('#fontList'), rootMargin: '80px' });
+
+function renderFontList() {
+  const q = $('#fontQ').value.trim().toLowerCase();
+  const used = usedFonts();
+  const el = selEl();
+  const curName = el?.type === 'text' ? firstFamily(editing ? getComputedStyle(selStyleNode()).fontFamily : el.font) : '';
+  const custom = customFonts.map(c => ({ label: c.name, css: fontCss(c.name), name: c.name, custom: true }));
+  const customNames = new Set(custom.map(c => c.name));
+  // 日本語フォント以外で、選んだことがある・このスライドで使っているもの
+  const extraNames = [...new Set([...picked, ...used])].filter(n => !JA_NAMES.has(n) && !customNames.has(n));
+  const extra = extraNames.map(n => ({ ...(fontByName.get(n) || { label: n, css: fontCss(n), name: n }), picked: picked.includes(n) && !used.has(n) }));
+
+  const list = $('#fontList');
+  previewIO.disconnect();
+  const frag = document.createDocumentFragment();
+  const head = text => {
+    const h = document.createElement('div');
+    h.className = 'pop-label';
+    h.textContent = text;
+    frag.append(h);
+  };
+  const row = f => {
+    const r = document.createElement('div');
+    r.className = 'frow';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'item' + (f.name === curName ? ' on' : '');
+    b.dataset.font = f.css;
+    b.dataset.name = f.name;
+    b.textContent = f.label;
+    if (GF.get(f.name)?.ja && f.label === f.name) {
+      const sm = document.createElement('span');
+      sm.className = 'sample';
+      sm.textContent = SAMPLE;
+      b.append(sm);
+    }
+    r.append(b);
+    previewIO.observe(b);
+    if (f.custom || f.picked) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'x';
+      x.textContent = '×';
+      x.title = f.custom ? 'このフォントを削除' : '一覧から外す';
+      x.dataset[f.custom ? 'fontDel' : 'fontUnpick'] = f.name;
+      r.append(x);
+    }
+    frag.append(r);
+  };
+
+  if (q) {
+    const pool = [...custom, ...ALL_FONTS.filter(f => !customNames.has(f.name))];
+    const hits = pool.filter(f => f.name.toLowerCase().includes(q) || f.label.toLowerCase().includes(q));
+    const MAX = 150;
+    head(hits.length ? `検索結果（${hits.length} 件${hits.length > MAX ? `・先頭の ${MAX} 件を表示` : ''}）` : '見つかりませんでした');
+    hits.slice(0, MAX).forEach(row);
+  } else {
+    if (custom.length) { head('自分で追加したフォント'); custom.forEach(row); }
+    if (extra.length) { head('選んだフォント'); extra.forEach(row); }
+    head('日本語フォント');
+    JA_FONTS.forEach(row);
+  }
+  list.replaceChildren(frag);
+  list.scrollTop = 0;
+}
+
+function pickFont(css) {
+  const name = firstFamily(css);
+  if (!JA_NAMES.has(name) && !customFonts.some(c => c.name === name) && !picked.includes(name)) {
+    picked.push(name);
+    savePicked();
+  }
+  useFont(css);
+  setText('font', css);
+}
+
+$('#fontQ').addEventListener('input', renderFontList);
+$('#fontQ').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  $('#fontList .item')?.click();   // Enter で先頭の候補を選ぶ
+});
+
+$('#fontList').addEventListener('click', async e => {
+  const x = e.target.closest('.x');
+  if (!x) return;
+  if (x.dataset.fontUnpick) {
+    picked = picked.filter(n => n !== x.dataset.fontUnpick);
+    savePicked();
+  } else if (x.dataset.fontDel) {
+    if (!confirm(`「${x.dataset.fontDel}」を追加したフォントから削除します。`)) return;
+    try { await removeCustomFont(x.dataset.fontDel); } catch (err) { alert('削除できませんでした'); }
+  }
+  renderFontList();
+});
+
+$('#fontFileBtn').addEventListener('click', () => $('#fontFile').click());
+$('#fontFile').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  let lastName = null;
+  for (const f of files) {
+    const name = cleanFontName(f.name.replace(/\.[^.]+$/, ''));
+    try {
+      if (!name) throw new Error('name');
+      const data = await f.arrayBuffer();
+      await new FontFace(name, data.slice(0)).load();   // フォントとして読めるか確かめる
+      if (customFonts.some(c => c.name === name)) await removeCustomFont(name);
+      await addCustomFont({ name, kind: 'file', data });
+      lastName = name;
+    } catch (err) {
+      alert(`「${f.name}」はフォントとして読み込めませんでした。`);
+    }
+  }
+  if (lastName) { pickFont(fontCss(lastName)); updateThumb(); }
+});
+
+async function addFontByName() {
+  const v = cleanFontName($('#fontNameIn').value);
+  if (!v) return;
+  $('#fontNameIn').value = '';
+  // Google フォントにある名前なら、それを選ぶ
+  const known = ALL_FONTS.find(f => f.name.toLowerCase() === v.toLowerCase());
+  if (known) { pickFont(known.css); closePops(); return; }
+  try {
+    if (!customFonts.some(c => c.name === v)) await addCustomFont({ name: v, kind: 'name' });
+  } catch (err) { /* 保存できなくても、今回は使えるようにする */ }
+  pickFont(fontCss(v));
+  closePops();
+}
+$('#fontNameAdd').addEventListener('click', addFontByName);
+$('#fontNameIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFontByName(); } });
+
+// フォントが届くと文字の幅が変わるので、枠と縮小表示を合わせ直す
+document.fonts.addEventListener('loadingdone', () => { if (deck) { updateSelBox(); } });
 $('#size').addEventListener('change', e => {
   const v = clamp(Math.round(+e.target.value) || 28, 6, 400);
   e.target.value = v;
@@ -685,7 +970,9 @@ colorInput('#color', v => setText('color', v, true), () => { if (!editing) commi
 colorInput('#fill', v => setBox('fill', v, true), () => commit());
 colorInput('#stroke', v => { const el = selEl(); if (el && !el.sw) el.sw = 2; setBox('stroke', v, true); }, () => commit());
 colorInput('#bg', v => { slide().bg = v; stage.style.background = v; }, () => commit());
-$('#sw').addEventListener('change', e => setBox('sw', +e.target.value));
+const swVal = v => clamp(Math.round(+v) || 0, 0, 200);
+$('#sw').addEventListener('input', e => { if (e.target.value !== '') setBox('sw', swVal(e.target.value), true); });
+$('#sw').addEventListener('change', e => { e.target.value = swVal(e.target.value); setBox('sw', swVal(e.target.value)); });
 $('#radius').addEventListener('change', e => setBox('radius', +e.target.value));
 
 $('#imgFile').addEventListener('change', e => { addImageFile(e.target.files[0]); e.target.value = ''; });
@@ -728,6 +1015,7 @@ document.addEventListener('keydown', e => {
   else if (mod && el?.type === 'text' && { b: 'bold', i: 'italic', u: 'underline' }[k]) { e.preventDefault(); toggleFmt({ b: 'bold', i: 'italic', u: 'underline' }[k]); }
   else if (mod) return;
   else if ((e.key === 'Delete' || e.key === 'Backspace') && el) { e.preventDefault(); delSel(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && panelFocus) { e.preventDefault(); delSlide(); }
   else if (e.key === 'Escape') { selId = null; updateSel(); }
   else if (e.key === 'Enter' && el?.type === 'text') { e.preventDefault(); startEdit(el.id, false); }
   else if (e.key.startsWith('Arrow') && el) {
@@ -848,13 +1136,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && dec
   if (!deck) { location.replace('index.html'); return; }
   theme = themeOf(deck.theme);
 
-  $('#font').append(...FONTS.map(([label, val]) => {
-    const o = document.createElement('option');
-    o.textContent = label;
-    o.value = val;
-    o.style.fontFamily = val;
-    return o;
-  }));
+  await customReady;
   $('#popLayout').append(...LAYOUTS.map(([kind, label]) => {
     const b = document.createElement('button');
     b.className = 'item';

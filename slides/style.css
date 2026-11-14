@@ -160,7 +160,12 @@ body.editor {
 .tb.primary { background: var(--accent); color: #fff; }
 .tb.primary:hover { background: #b03a22; }
 select.tb, input.tb { border-color: var(--line-strong); background: var(--bg); }
-select#font { width: 150px; }
+.fontbtn { width: 170px; justify-content: space-between; border-color: var(--line-strong); background: var(--bg); }
+.fontbtn #fontName { overflow: hidden; text-overflow: ellipsis; }
+.fontbtn .caret { font-size: 10px; color: var(--sub); }
+.swatch input.num { width: 52px; height: 22px; border-radius: 4px; text-align: center; cursor: text; background: var(--bg); }
+.swatch .unit { color: var(--sub); font-size: 12px; }
+.acct { font-size: 12px; color: var(--sub); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 input.num { width: 54px; padding: 0 4px; text-align: center; }
 .swatch { cursor: pointer; }
 .swatch input { width: 20px; height: 20px; padding: 0; border: 1px solid var(--line-strong); border-radius: 4px; background: none; cursor: pointer; }
@@ -210,6 +215,7 @@ input.num { width: 54px; padding: 0 4px; text-align: center; }
 .panel-bottom .thumb-item .thumb { flex: none; height: 100%; }
 .thumb-item.cur .thumb { outline: 2px solid var(--accent); border-color: var(--accent); }
 .thumb-item.cur .n { color: var(--accent); font-weight: 700; }
+.panel-focus .thumb-item.cur .thumb { outline-width: 3px; box-shadow: 0 0 0 5px var(--accent-soft); }
 .thumb-item.over .thumb { outline: 2px dashed var(--ink); }
 
 #work {
@@ -276,6 +282,23 @@ input.num { width: 54px; padding: 0 4px; text-align: center; }
 .pop-label { padding: 4px 10px; font-size: 12px; color: var(--sub); }
 .pop .radio { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; cursor: pointer; }
 .pop .radio input { accent-color: var(--accent); }
+
+.fontpop { width: 300px; max-width: calc(100vw - 16px); padding: 8px; }
+.fontpop input[type="search"], .fontpop input[type="text"] {
+  height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg); min-width: 0;
+}
+.fontpop input:focus { outline: none; border-color: var(--ink); }
+#fontList { overflow-y: auto; max-height: min(52vh, 420px); margin: 6px 0; overscroll-behavior: contain; }
+.frow { display: flex; align-items: center; }
+.frow .item { flex: 1; min-width: 0; height: 34px; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow .item.on { background: var(--accent-soft); color: var(--accent); }
+.frow .item .sample { margin-left: 10px; color: var(--sub); }
+.frow .x { flex: none; width: 28px; height: 28px; border: 0; border-radius: 5px; background: none; color: var(--faint); }
+.frow .x:hover { background: var(--paper); color: var(--accent); }
+.font-add { border-top: 1px solid var(--line); padding-top: 4px; display: flex; flex-direction: column; }
+.font-add-row { display: flex; gap: 6px; padding: 2px 4px 2px; }
+.font-add-row input { flex: 1; }
+.font-add-row .tb { border-color: var(--line-strong); }
 
 /* 発表 */
 #present { position: fixed; inset: 0; z-index: 50; background: #000; cursor: pointer; overflow: hidden; }

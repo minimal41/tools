@@ -16,6 +16,7 @@
   <input id="title" class="title-input" type="text" maxlength="100" aria-label="スライドの名前">
   <span id="status" class="status"></span>
   <span class="grow"></span>
+  <span class="acct" data-tools-account="name"></span>
   <button class="tb" data-act="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
   <button class="tb" data-act="redo" title="やり直す (Ctrl+Y)">やり直す</button>
   <span class="sep"></span>
@@ -32,7 +33,7 @@
   <span class="sep"></span>
 
   <span class="group g-text">
-    <select id="font" class="tb" title="フォント"></select>
+    <button class="tb fontbtn" id="fontBtn" data-pop="popFont" title="フォント"><span id="fontName"></span><span class="caret" aria-hidden="true">▾</span></button>
     <button class="tb sq" data-act="sizeDown" title="小さく">−</button>
     <input id="size" class="tb num" type="number" min="6" max="400" title="文字サイズ">
     <button class="tb sq" data-act="sizeUp" title="大きく">＋</button>
@@ -60,10 +61,7 @@
     <label class="tb swatch" title="塗りの色">塗り<input type="color" id="fill"></label>
     <button class="tb" data-act="noFill" title="塗りをなくす">塗りなし</button>
     <label class="tb swatch" title="枠線の色">枠<input type="color" id="stroke"></label>
-    <select id="sw" class="tb" title="枠線の太さ">
-      <option value="0">枠なし</option><option value="1">1px</option><option value="2">2px</option>
-      <option value="4">4px</option><option value="8">8px</option>
-    </select>
+    <label class="tb swatch" title="枠線の太さ（0 で枠なし）">太さ<input id="sw" class="num" type="number" min="0" max="200" step="1"><span class="unit">px</span></label>
     <select id="radius" class="tb" title="角の丸み">
       <option value="0">角 0</option><option value="8">角 8</option><option value="24">角 24</option><option value="60">角 60</option>
     </select>
@@ -88,7 +86,7 @@
       <button class="tb" data-act="slideDup" title="スライドを複製">複製</button>
       <button class="tb sq" data-act="slidePrev" title="前へ移動">↑</button>
       <button class="tb sq" data-act="slideNext" title="後ろへ移動">↓</button>
-      <button class="tb" data-act="slideDel" title="スライドを削除">削除</button>
+      <button class="tb" data-act="slideDel" title="スライドを削除（一覧で選んで Delete / Backspace でも消せます）">削除</button>
     </div>
     <div id="thumbs"></div>
   </aside>
@@ -123,6 +121,19 @@
   <button class="item" data-shape="line">線</button>
 </div>
 <div class="pop" id="popLayout"></div>
+<div class="pop fontpop" id="popFont">
+  <input type="search" id="fontQ" placeholder="フォントを検索（Google フォント全書体）" aria-label="フォントを検索" autocomplete="off">
+  <div id="fontList"></div>
+  <div class="font-add">
+    <div class="pop-label">フォントを追加</div>
+    <button class="item" id="fontFileBtn" type="button">ファイルから追加（.ttf .otf .woff .woff2）</button>
+    <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" multiple hidden>
+    <div class="font-add-row">
+      <input type="text" id="fontNameIn" placeholder="端末にあるフォントの名前" aria-label="端末にあるフォントの名前" maxlength="60">
+      <button class="tb" id="fontNameAdd" type="button">追加</button>
+    </div>
+  </div>
+</div>
 
 <div id="present" hidden>
   <div id="pStage" class="stage"></div>
@@ -131,7 +142,9 @@
 </div>
 <div id="printArea"></div>
 
+<script src="gfonts.js"></script>
 <script src="common.js"></script>
 <script src="editor.js"></script>
+<script type="module" src="../shared/account-badge.js"></script>
 </body>
 </html>
