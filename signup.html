@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新規登録 - Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/auth-page.css">
+</head>
+<body data-mode="signup">
+<div class="container">
+  <a class="back" href="index.html">← Tools</a>
+  <h1 id="pageTitle">新規登録</h1>
+  <p class="lead" id="pageLead">アカウントを作ると、作ったデータを保存して、どの端末からでも使えるようになります。</p>
+
+  <div class="signed" id="signedIn" hidden>
+    <p><span class="who" id="signedWho"></span> でログインしています。</p>
+    <div class="row">
+      <a class="btn primary" href="index.html">Tools へ</a>
+      <button type="button" class="btn" id="logoutBtn">ログアウト</button>
+    </div>
+  </div>
+
+  <div id="authArea">
+    <p class="msg" id="authMsg" hidden></p>
+    <form id="authForm" novalidate>
+      <div class="field">
+        <label for="authName">表示名（任意）</label>
+        <input type="text" id="authName" autocomplete="nickname" maxlength="40">
+      </div>
+      <div class="field">
+        <label for="authEmail">メールアドレス</label>
+        <input type="email" id="authEmail" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="authPassword">パスワード</label>
+        <input type="password" id="authPassword" autocomplete="new-password" minlength="6">
+        <p class="hint">6文字以上</p>
+      </div>
+      <div class="field">
+        <label for="authPassword2">パスワード（確認）</label>
+        <input type="password" id="authPassword2" autocomplete="new-password" minlength="6">
+      </div>
+      <button type="submit" class="btn primary wide" id="authSubmit">アカウントを作成</button>
+    </form>
+    <div class="links">
+      <p>既にアカウントをお持ちの方は <a href="login.html" data-keep-next>ログイン</a></p>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <small class="copyright">© 2026 TEAM-Minimal</small>
+  </div>
+</footer>
+
+<script type="module" src="shared/auth-page.js"></script>
+<script>
+/* アカウント機能（shared/account.js）が読み込めなかったときは、押しても何も起きないので案内を出す */
+addEventListener('load', function () {
+  setTimeout(function () {
+    if (window.__toolsAccountLoaded) return;
+    var m = document.getElementById('authMsg');
+    m.hidden = false;
+    m.className = 'msg info';
+    m.textContent = 'アカウント機能を読み込めませんでした。通信状況を確認して、ページを読み込み直してください。';
+  }, 3000);
+});
+</script>
+</body>
+</html>

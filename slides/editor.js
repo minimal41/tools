@@ -772,10 +772,16 @@ const ALL_FONTS = (() => {
 const fontByName = new Map(ALL_FONTS.map(f => [f.name, f]));
 const fontLabel = name => fontByName.get(name)?.label || name;
 
-let picked = [];
-try { picked = JSON.parse(localStorage.getItem('slides.pickedFonts') || '[]').filter(n => typeof n === 'string'); } catch (e) { /* 空のまま */ }
-function savePicked() {
-  try { localStorage.setItem('slides.pickedFonts', JSON.stringify(picked)); } catch (e) { /* 保存できなくても動かす */ }
+/* 以前はブラウザに覚えていた「選んだフォント」を、追加したフォントと同じ場所（アカウントにも保存される）へ移す */
+async function migratePicked() {
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem('slides.pickedFonts') || '[]'); localStorage.removeItem('slides.pickedFonts'); } catch (e) { return; }
+  for (const n of Array.isArray(old) ? old : []) {
+    const name = cleanFontName(n);
+    if (name && !JA_NAMES.has(name) && !customFonts.some(c => c.name === name)) {
+      (await addCustomFont({ name, kind: 'pick' })).saved.catch(() => {});
+    }
+  }
 }
 
 /* このスライドで使っているフォントの名前 */
@@ -825,7 +831,8 @@ function renderFontList() {
   const used = usedFonts();
   const el = selEl();
   const curName = el?.type === 'text' ? firstFamily(editing ? getComputedStyle(selStyleNode()).fontFamily : el.font) : '';
-  const custom = customFonts.map(c => ({ label: c.name, css: fontCss(c.name), name: c.name, custom: true }));
+  const custom = customFonts.filter(c => c.kind !== 'pick').map(c => ({ label: c.name, css: fontCss(c.name), name: c.name, custom: true }));
+  const picked = customFonts.filter(c => c.kind === 'pick').map(c => c.name);
   const customNames = new Set(custom.map(c => c.name));
   // 日本語フォント以外で、選んだことがある・このスライドで使っているもの
   const extraNames = [...new Set([...picked, ...used])].filter(n => !JA_NAMES.has(n) && !customNames.has(n));
@@ -887,9 +894,9 @@ function renderFontList() {
 
 function pickFont(css) {
   const name = firstFamily(css);
-  if (!JA_NAMES.has(name) && !customFonts.some(c => c.name === name) && !picked.includes(name)) {
-    picked.push(name);
-    savePicked();
+  if (!JA_NAMES.has(name) && !customFonts.some(c => c.name === name)) {
+    // 選んだフォントも、次から一覧に並ぶように覚えておく
+    addCustomFont({ name, kind: 'pick' }).then(r => r.saved).catch(() => {});
   }
   useFont(css);
   setText('font', css);
@@ -905,13 +912,10 @@ $('#fontQ').addEventListener('keydown', e => {
 $('#fontList').addEventListener('click', async e => {
   const x = e.target.closest('.x');
   if (!x) return;
-  if (x.dataset.fontUnpick) {
-    picked = picked.filter(n => n !== x.dataset.fontUnpick);
-    savePicked();
-  } else if (x.dataset.fontDel) {
-    if (!confirm(`「${x.dataset.fontDel}」を追加したフォントから削除します。`)) return;
-    try { await removeCustomFont(x.dataset.fontDel); } catch (err) { alert('削除できませんでした'); }
-  }
+  const name = x.dataset.fontUnpick || x.dataset.fontDel;
+  if (x.dataset.fontDel && !confirm(`「${name}」を追加したフォントから削除します。`)) return;
+  try { await removeCustomFont(name); }
+  catch (err) { alert('アカウントから削除できませんでした：' + Store.errorText(err)); }
   renderFontList();
 });
 
@@ -926,15 +930,31 @@ $('#fontFile').addEventListener('change', async e => {
       if (!name) throw new Error('name');
       const data = await f.arrayBuffer();
       await new FontFace(name, data.slice(0)).load();   // フォントとして読めるか確かめる
-      if (customFonts.some(c => c.name === name)) await removeCustomFont(name);
-      await addCustomFont({ name, kind: 'file', data });
+      const { saved } = await addCustomFont({ name, kind: 'file', data });
       lastName = name;
+      // アカウントへの保存は大きいと時間がかかるので、待たずに先へ進む
+      fontSaving(name, saved);
     } catch (err) {
       alert(`「${f.name}」はフォントとして読み込めませんでした。`);
     }
   }
   if (lastName) { pickFont(fontCss(lastName)); updateThumb(); }
 });
+
+/* フォントファイルをアカウントに保存している間の表示と、失敗したときの知らせ */
+let fontJobs = 0;
+function fontSaving(name, saved) {
+  fontJobs++;
+  $('#fontStatus').textContent = 'フォントをアカウントに保存中…';
+  saved.then(
+    r => { if (r === 'saved') flashFontStatus('フォントをアカウントに保存しました'); },
+    err => alert(`「${name}」をアカウントに保存できませんでした（このブラウザでは使えます）：` + Store.errorText(err)),
+  ).finally(() => { if (--fontJobs === 0 && /保存中/.test($('#fontStatus').textContent)) $('#fontStatus').textContent = ''; });
+}
+function flashFontStatus(text) {
+  $('#fontStatus').textContent = text;
+  setTimeout(() => { if ($('#fontStatus').textContent === text) $('#fontStatus').textContent = ''; }, 4000);
+}
 
 async function addFontByName() {
   const v = cleanFontName($('#fontNameIn').value);
@@ -943,9 +963,9 @@ async function addFontByName() {
   // Google フォントにある名前なら、それを選ぶ
   const known = ALL_FONTS.find(f => f.name.toLowerCase() === v.toLowerCase());
   if (known) { pickFont(known.css); closePops(); return; }
-  try {
-    if (!customFonts.some(c => c.name === v)) await addCustomFont({ name: v, kind: 'name' });
-  } catch (err) { /* 保存できなくても、今回は使えるようにする */ }
+  if (!customFonts.some(c => c.name === v && c.kind !== 'pick')) {
+    (await addCustomFont({ name: v, kind: 'name' })).saved.catch(err => console.warn(err));
+  }
   pickFont(fontCss(v));
   closePops();
 }
@@ -1137,6 +1157,12 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && dec
   theme = themeOf(deck.theme);
 
   await customReady;
+  migratePicked();
+  // ほかの端末で追加したフォントが届いたら、開いている一覧と表示を更新する
+  onFontsChanged = () => {
+    if ($('#popFont').classList.contains('open')) renderFontList();
+    if (deck) { updateSelBox(); syncBar(); }
+  };
   $('#popLayout').append(...LAYOUTS.map(([kind, label]) => {
     const b = document.createElement('button');
     b.className = 'item';

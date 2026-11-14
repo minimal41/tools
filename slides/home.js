@@ -126,7 +126,7 @@ $('#importFile').addEventListener('change', async e => {
 async function renderStorage() {
   const { account, user } = await Store.ready();
   const note = $('#storageNote');
-  const login = account ? account.loginUrl('../index.html', 'login') : '../index.html';
+  const login = account ? account.loginUrl('../index.html', 'login') : '../login.html';
 
   if (!user) {
     note.replaceChildren(

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ログイン - Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/auth-page.css">
+</head>
+<body data-mode="login">
+<div class="container">
+  <a class="back" href="index.html">← Tools</a>
+  <h1 id="pageTitle">ログイン</h1>
+  <p class="lead" id="pageLead">Tools のアカウントでログインします。</p>
+
+  <div class="signed" id="signedIn" hidden>
+    <p><span class="who" id="signedWho"></span> でログインしています。</p>
+    <div class="row">
+      <a class="btn primary" href="index.html">Tools へ</a>
+      <button type="button" class="btn" id="logoutBtn">ログアウト</button>
+    </div>
+  </div>
+
+  <div id="authArea">
+    <p class="msg" id="authMsg" hidden></p>
+    <form id="authForm" novalidate>
+      <div class="field">
+        <label for="authEmail">メールアドレス</label>
+        <input type="email" id="authEmail" autocomplete="email" required>
+      </div>
+      <div class="field" id="passwordField">
+        <label for="authPassword">パスワード</label>
+        <input type="password" id="authPassword" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn primary wide" id="authSubmit">ログイン</button>
+    </form>
+    <div class="links">
+      <p data-show="login">アカウントをお持ちでない方は <a href="signup.html" data-keep-next>新規登録</a></p>
+      <p data-show="login">パスワードをお忘れですか？ <button type="button" data-goto="forgot">再設定する</button></p>
+      <p data-show="forgot" hidden><button type="button" data-goto="login">ログインにもどる</button></p>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <small class="copyright">© 2026 TEAM-Minimal</small>
+  </div>
+</footer>
+
+<script type="module" src="shared/auth-page.js"></script>
+<script>
+/* アカウント機能（shared/account.js）が読み込めなかったときは、押しても何も起きないので案内を出す */
+addEventListener('load', function () {
+  setTimeout(function () {
+    if (window.__toolsAccountLoaded) return;
+    var m = document.getElementById('authMsg');
+    m.hidden = false;
+    m.className = 'msg info';
+    m.textContent = 'アカウント機能を読み込めませんでした。通信状況を確認して、ページを読み込み直してください。';
+  }, 3000);
+});
+</script>
+</body>
+</html>

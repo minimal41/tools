@@ -10,7 +10,8 @@
 
 ## アカウントとデータ保存
 
-アカウントの作成・ログイン・パスワード再設定は **Tools のホーム（`index.html`）** で行います。
+ログイン・パスワード再設定は **`login.html`**、新規登録は **`signup.html`** で行います（Tools のホームや各ツールからリンクしています）。
+`?next=…` を付けて開くと、ログイン・登録のあとそのページへもどります。
 各ツールは `shared/account.js` を読み込んでログイン状態を共有します（Making Site 側にはログイン画面はありません）。
 
 | 役割 | 使うもの |
@@ -19,8 +20,10 @@
 | ユーザー情報（`users/{uid}`: email, displayName, createdAt, lastLoginAt） | Cloud Firestore |
 | Making Site のサイト | Vercel（`api/sites.js` → Postgres の `sites` テーブル） |
 | スライド | Vercel（`api/decks.js` → Postgres の `decks` テーブル） |
+| スライドに追加したフォント | Vercel（`api/fonts.js` → Postgres の `fonts`・`font_chunks` テーブル） |
+| ログインの控え | Vercel（`api/session.js` → ブラウザの Cookie。データベースは使わない） |
 
-ブラウザは Firebase の ID トークンを付けて `/api/sites`・`/api/decks` を呼び、サーバー側でトークンを検証して本人のデータだけを返します。
+ブラウザは Firebase の ID トークンを付けて `/api/sites`・`/api/decks`・`/api/fonts` を呼び、サーバー側でトークンを検証して本人のデータだけを返します。
 
 ### 1. Firebase の設定
 
@@ -37,7 +40,7 @@
 2. プロジェクトの **Storage** →「Create Database」から **Neon（Postgres）** を作成してプロジェクトに接続する。
    region は **Singapore（`ap-southeast-1`）**。API（`api/`）も `vercel.json` でシンガポール（`sin1`）で動かしているので、
    region を変えるときは `vercel.json` の `regions` も合わせて変える。Auth と Realtime はオフでよい（ログインは Firebase で行う）。
-   `DATABASE_URL` が自動で設定されます。テーブル（`sites`・`decks`）は最初のアクセス時に自動作成されます。
+   `DATABASE_URL` が自動で設定されます。テーブル（`sites`・`decks`・`fonts`・`font_chunks`）は最初のアクセス時に自動作成されます。
 3. **Settings → Environment Variables** に `FIREBASE_PROJECT_ID`（Firebase のプロジェクト ID）を追加して、再デプロイする。
 
 ページを GitHub Pages など Vercel 以外に置く場合は、`shared/config.js` の `apiBase` に Vercel のアドレスを書きます。
@@ -53,10 +56,15 @@
 - ログインしていないときは、これまでどおりこのブラウザ（IndexedDB）に保存されます。
 - ログイン後、このブラウザだけに保存されたスライドがあれば、スライドの一覧に「アカウントに移す」ボタンが出ます。
 
-### ログイン状態の表示
+### ログイン状態を保つしくみ
 
-ログインは Firebase がブラウザに覚えているので、ページを移っても、ブラウザを閉じても、ログアウトするまで続きます。
-Convrt・席替え・Sheetbase・スライドの各ページは `shared/account-badge.js` を読み込み、右上に「○○ でログイン中 / ログアウト」（未ログインなら「ログイン」）を表示します。
+- Firebase はログイン状態をブラウザの保存領域（IndexedDB）に覚えているので、ページを移ってもブラウザを閉じても続きます。
+- ただしブラウザによっては、しばらく使わないと保存領域を消したり（Safari は約7日）、起動時の確認に失敗してログイン状態を捨てたりします。
+  そこで、ログインを続けるための鍵を **JavaScript から読めない Cookie**（`/api/session`、HttpOnly・約400日・使うたびに延長）にも控えておき、
+  ログイン状態が消えていたらそこから自動で戻します（`shared/account.js` の `restoreSession`）。
+- ログアウトすると控えも消えます。控えは、ページと API を同じ場所（Vercel）に置いているときだけ働きます。
+- ブラウザや端末が「終了時に Cookie とサイトデータをすべて消す」設定（シークレットウィンドウ、学校・会社の管理端末、再起動で元に戻る PC など）の場合は、控えも一緒に消えるので、ログインし直す必要があります。
+- Convrt・席替え・Sheetbase・スライドの各ページは `shared/account-badge.js` を読み込み、右上に「○○ でログイン中 / ログアウト」（未ログインなら「ログイン」）を表示します。
 
 ### スライドのフォント
 
@@ -64,7 +72,9 @@ Convrt・席替え・Sheetbase・スライドの各ページは `shared/account-
   それ以外は検索欄から Google フォント全書体（`slides/gfonts.js`、1,908 書体・2026年1月時点）を探せて、一度選んだものは次から一覧に並びます。
 - Google フォントは、使われたときに初めて読み込みます。
 - 「フォントを追加」から、フォントファイル（.ttf / .otf / .woff / .woff2）や、端末に入っているフォントの名前を追加できます。
-  追加したフォントファイルはそのブラウザの中にだけ保存されるので、別の端末で開くと既定の書体で表示されます。
+- 追加したフォント（ファイル・名前・検索して選んだもの）は、ログインしていればアカウントに保存され、同じアカウントならどの端末でも使えます。
+  ログインしていないときはそのブラウザの中にだけ保存され、あとでログインすると自動でアカウントに移ります。
+- フォントファイルは 1 つ 40MB まで、1 アカウントの合計 150MB までです（Neon の無料枠は全体で 0.5GB なので、大きなフォントを多数入れると圧迫します）。
 
 ### 履歴（Convrt・席替え）
 

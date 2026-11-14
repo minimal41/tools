@@ -108,6 +108,8 @@
   .account .who { color: var(--sub); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .btn {
+    display: inline-block;
+    text-decoration: none;
     font: inherit;
     font-size: 13px;
     cursor: pointer;
@@ -133,43 +135,6 @@
     margin-bottom: 20px;
   }
   .notice[hidden] { display: none; }
-
-  dialog.auth {
-    width: min(380px, calc(100vw - 32px));
-    margin: auto;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 26px 24px 22px;
-    color: var(--ink);
-    background: var(--bg);
-  }
-  dialog.auth::backdrop { background: rgba(29, 29, 27, .35); }
-  dialog.auth h2 { font-family: var(--serif); font-size: 19px; font-weight: 600; margin-bottom: 4px; }
-  dialog.auth .sub { font-size: 12.5px; color: var(--sub); margin-bottom: 18px; }
-  dialog.auth .close {
-    position: absolute; top: 10px; right: 12px;
-    border: 0; background: none; font-size: 18px; color: var(--faint); cursor: pointer; line-height: 1;
-  }
-  dialog.auth .close:hover { color: var(--ink); }
-  .field { margin-bottom: 12px; }
-  .field label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; }
-  .field input {
-    width: 100%; font: inherit; font-size: 14px; padding: 8px 10px;
-    border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink);
-  }
-  .field input:focus { outline: none; border-color: var(--ink); }
-  dialog.auth form .btn.primary { width: 100%; padding: 9px 14px; margin-top: 4px; font-size: 14px; }
-  .msg { font-size: 12.5px; border-radius: 3px; padding: 8px 10px; margin-bottom: 12px; }
-  .msg[hidden] { display: none; }
-  .msg.error { background: #fdecea; color: #b3261e; border: 1px solid #f6c7c2; }
-  .msg.success { background: #eaf6ec; color: #1a7d34; border: 1px solid #bfe4c8; }
-  .switch { margin-top: 14px; text-align: center; font-size: 12.5px; color: var(--sub); }
-  .switch button { border: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; padding: 0; }
-  .switch button:hover { text-decoration: underline; }
-  .mode { display: none; }
-  dialog[data-mode="login"] .mode.login,
-  dialog[data-mode="signup"] .mode.signup,
-  dialog[data-mode="forgot"] .mode.forgot { display: block; }
 
   /* Footer：画面幅いっぱいの淡い帯。ページが短くても画面の下端に置く */
   .site-footer {
@@ -212,8 +177,8 @@
     <h1>Tools</h1>
     <div class="account" id="account">
       <span class="who" id="accountWho"></span>
-      <button type="button" class="btn" id="loginBtn" hidden>ログイン</button>
-      <button type="button" class="btn primary" id="signupBtn" hidden>アカウント作成</button>
+      <a class="btn" id="loginBtn" href="login.html" hidden>ログイン</a>
+      <a class="btn primary" id="signupBtn" href="signup.html" hidden>新規登録</a>
       <button type="button" class="btn" id="logoutBtn" hidden>ログアウト</button>
     </div>
   </header>
@@ -273,45 +238,6 @@
   </div>
 </footer>
 
-<dialog class="auth" id="authDialog" data-mode="login" aria-labelledby="authTitle">
-  <button type="button" class="close" id="authClose" aria-label="閉じる">×</button>
-
-  <div class="mode login">
-    <h2 id="authTitle">ログイン</h2>
-    <p class="sub">Tools のアカウントでログインします。</p>
-  </div>
-  <div class="mode signup">
-    <h2>アカウント作成</h2>
-    <p class="sub">作ったデータを保存して、どの端末からでも使えるようになります。</p>
-  </div>
-  <div class="mode forgot">
-    <h2>パスワードの再設定</h2>
-    <p class="sub">登録したメールアドレスに、再設定用のリンクを送ります。</p>
-  </div>
-
-  <p class="msg" id="authMsg" hidden></p>
-
-  <form id="authForm" novalidate>
-    <div class="field mode signup">
-      <label for="authName">表示名（任意）</label>
-      <input type="text" id="authName" autocomplete="nickname" maxlength="40">
-    </div>
-    <div class="field">
-      <label for="authEmail">メールアドレス</label>
-      <input type="email" id="authEmail" autocomplete="email" required>
-    </div>
-    <div class="field mode login signup" id="passwordField">
-      <label for="authPassword">パスワード</label>
-      <input type="password" id="authPassword" autocomplete="current-password" minlength="6">
-    </div>
-    <button type="submit" class="btn primary" id="authSubmit">ログイン</button>
-  </form>
-
-  <div class="switch mode login">アカウントをお持ちでない方は <button type="button" data-goto="signup">アカウント作成</button></div>
-  <div class="switch mode login">パスワードをお忘れですか？ <button type="button" data-goto="forgot">再設定する</button></div>
-  <div class="switch mode signup">既にアカウントをお持ちの方は <button type="button" data-goto="login">ログイン</button></div>
-  <div class="switch mode forgot"><button type="button" data-goto="login">ログインにもどる</button></div>
-</dialog>
 
 <script type="module">
 import * as account from './shared/account.js';
@@ -319,88 +245,21 @@ import * as account from './shared/account.js';
 window.__toolsAccountLoaded = true;
 
 const $ = (id) => document.getElementById(id);
-const dialog = $('authDialog');
-const form = $('authForm');
-const msg = $('authMsg');
-const submit = $('authSubmit');
 const params = new URLSearchParams(location.search);
 
-/* ログイン後にもどるページ（同じサイト内の URL だけを許可する） */
-function nextUrl() {
+/* 以前のリンク（index.html?account=login&next=…）で来たときは、ログイン・新規登録のページへ送る */
+const requested = params.get('account');
+if (requested === 'login' || requested === 'signup') {
   const next = params.get('next');
-  if (!next) return null;
-  try {
-    const u = new URL(next, location.href);
-    return u.origin === location.origin ? u.href : null;
-  } catch { return null; }
+  location.replace((requested === 'signup' ? 'signup.html' : 'login.html') + (next ? '?next=' + encodeURIComponent(next) : ''));
 }
 
-const labels = { login: 'ログイン', signup: 'アカウントを作成', forgot: '再設定メールを送る' };
-
-function setMode(mode) {
-  dialog.dataset.mode = mode;
-  submit.textContent = labels[mode];
-  $('authPassword').required = mode !== 'forgot';
-  $('authPassword').autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
-  $('authPassword').placeholder = mode === 'signup' ? '6文字以上' : '';
-  showMsg('');
+if (!account.isConfigured) {
+  $('accountNotice').hidden = false;
+  $('accountNotice').textContent = 'アカウント機能を使うには、管理者が shared/config.js に Firebase の設定を書き込む必要があります。';
 }
 
-function showMsg(text, type = 'error') {
-  msg.textContent = text;
-  msg.className = 'msg ' + type;
-  msg.hidden = !text;
-}
-
-function openDialog(mode) {
-  if (!account.isConfigured) {
-    $('accountNotice').hidden = false;
-    $('accountNotice').textContent = 'アカウント機能を使うには、管理者が shared/firebase-config.js に Firebase の設定を書き込む必要があります。';
-    return;
-  }
-  setMode(mode);
-  if (!dialog.open) dialog.showModal();
-  $(mode === 'signup' ? 'authName' : 'authEmail').focus();
-}
-
-$('loginBtn').addEventListener('click', () => openDialog('login'));
-$('signupBtn').addEventListener('click', () => openDialog('signup'));
-$('authClose').addEventListener('click', () => dialog.close());
-dialog.querySelectorAll('[data-goto]').forEach((b) =>
-  b.addEventListener('click', () => setMode(b.dataset.goto)));
 $('logoutBtn').addEventListener('click', () => account.logOut());
-
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const mode = dialog.dataset.mode;
-  const email = $('authEmail').value.trim();
-  const password = $('authPassword').value;
-  const displayName = $('authName').value.trim();
-
-  if (!email) return showMsg('メールアドレスを入力してください。');
-  if (mode !== 'forgot' && !password) return showMsg('パスワードを入力してください。');
-
-  submit.disabled = true;
-  try {
-    if (mode === 'signup') {
-      await account.signUp({ email, password, displayName });
-    } else if (mode === 'login') {
-      await account.signIn({ email, password });
-    } else {
-      await account.resetPassword(email);
-      showMsg('再設定用のメールを送信しました。メール内のリンクから新しいパスワードを設定してください。', 'success');
-      return;
-    }
-    form.reset();
-    dialog.close();
-    const next = nextUrl();
-    if (next) location.href = next;
-  } catch (err) {
-    showMsg(account.errorMessage(err));
-  } finally {
-    submit.disabled = false;
-  }
-});
 
 account.onUserChanged((user) => {
   $('loginBtn').hidden = !!user;
@@ -409,16 +268,6 @@ account.onUserChanged((user) => {
   $('accountWho').textContent = user ? (user.displayName || user.email) : '';
   $('accountWho').title = user ? user.email : '';
 });
-
-/* ツールのページから ?account=login / signup で呼ばれたときは、すぐにダイアログを開く */
-const requested = params.get('account');
-if (requested === 'login' || requested === 'signup') {
-  account.waitForUser().then((user) => {
-    const next = nextUrl();
-    if (user && next) location.href = next;
-    else if (!user) openDialog(requested);
-  });
-}
 </script>
 
 <script>

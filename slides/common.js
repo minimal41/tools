@@ -96,13 +96,21 @@ const FontStore = {
   del(name) { return this.run('readwrite', s => s.delete(name)); },
 };
 
-/* 自分で追加したフォント：{ name, kind: 'file'（ファイル）| 'name'（端末にあるフォントの名前） } */
+/* 自分で追加したフォント：{ name, kind }
+ *   kind: file = フォントファイル / name = 端末に入っているフォントの名前 / pick = 検索して選んだ Google フォント
+ * このブラウザ（IndexedDB）に置き、ログインしていればアカウントにも保存して、どの端末でも使えるようにする。
+ * synced はアカウントに保存済みの印。 */
 const customFonts = [];
 const customFaces = new Map();
+let onFontsChanged = () => {};   // 一覧が変わったことをエディタに知らせる
 
 function registerCustom(f) {
-  if (!customFonts.some(c => c.name === f.name)) customFonts.push({ name: f.name, kind: f.kind });
+  const i = customFonts.findIndex(c => c.name === f.name);
+  if (i >= 0) customFonts.splice(i, 1);
+  customFonts.push({ name: f.name, kind: f.kind });
   if (f.kind !== 'file') return;
+  const old = customFaces.get(f.name);
+  if (old) document.fonts.delete(old);
   fontLoaded.add(f.name);
   const face = new FontFace(f.name, f.data);
   customFaces.set(f.name, face);
@@ -110,21 +118,82 @@ function registerCustom(f) {
   face.load().catch(() => { /* 壊れたファイルは既定の書体で表示される */ });
 }
 
-const customReady = FontStore.all()
-  .then(list => list.sort((a, b) => (a.added || 0) - (b.added || 0)).forEach(registerCustom))
-  .catch(() => { /* 保存領域が使えなくても他は動かす */ });
-
-async function addCustomFont(f) {
-  await FontStore.put({ ...f, added: Date.now() });
-  registerCustom(f);
-}
-
-async function removeCustomFont(name) {
-  await FontStore.del(name);
+function unregisterCustom(name) {
   const i = customFonts.findIndex(c => c.name === name);
   if (i >= 0) customFonts.splice(i, 1);
   const face = customFaces.get(name);
   if (face) { document.fonts.delete(face); customFaces.delete(name); fontLoaded.delete(name); }
+}
+
+const customReady = FontStore.all()
+  .then(list => list.sort((a, b) => (a.added || 0) - (b.added || 0)).forEach(registerCustom))
+  .catch(() => { /* 保存領域が使えなくても他は動かす */ });
+
+/* 追加：まずこのブラウザに保存して使えるようにする。
+   戻り値は、アカウントへの保存が終わると決まる Promise（'saved' / 'local'＝ログインしていない） */
+async function addCustomFont(f) {
+  const rec = { name: f.name, kind: f.kind, data: f.data, added: Date.now(), synced: false };
+  try { await FontStore.put(rec); } catch (e) { /* このブラウザに置けなくても、今回は使えるようにする */ }
+  registerCustom(rec);
+  onFontsChanged();
+  return { saved: pushFont(rec) };
+}
+
+async function pushFont(rec) {
+  const a = await Store.remote();
+  if (!a) return 'local';
+  await a.fonts.put(rec);
+  try { await FontStore.put({ ...rec, synced: true }); } catch (e) { /* 次の同期でもう一度送る */ }
+  return 'saved';
+}
+
+async function removeCustomFont(name) {
+  try { await FontStore.del(name); } catch (e) { /* 無ければそれでよい */ }
+  unregisterCustom(name);
+  onFontsChanged();
+  const a = await Store.remote();
+  if (a) await a.fonts.remove(name);
+}
+
+/* アカウントと、このブラウザのフォントを揃える */
+async function syncFonts() {
+  const a = await Store.remote();
+  if (!a) return;
+  await customReady;
+  let remote, local;
+  try { remote = await a.fonts.list(); } catch (e) { console.warn('フォントの一覧を取得できませんでした', e); return; }
+  try { local = await FontStore.all(); } catch (e) { local = []; }
+  const onAccount = new Set(remote.map(r => r.name));
+  let changed = false;
+
+  // ほかの端末で削除されたもの
+  for (const f of local) {
+    if (!f.synced || onAccount.has(f.name)) continue;
+    try { await FontStore.del(f.name); } catch (e) { /* 無視 */ }
+    unregisterCustom(f.name);
+    changed = true;
+  }
+  // このブラウザにまだ無いもの（ほかの端末で追加したもの）
+  for (const r of remote) {
+    const have = local.find(f => f.name === r.name);
+    if (have && have.kind === r.kind) {
+      if (!have.synced) { try { await FontStore.put({ ...have, synced: true }); } catch (e) { /* 無視 */ } }
+      continue;
+    }
+    try {
+      const rec = { name: r.name, kind: r.kind, added: Date.now(), synced: true };
+      if (r.kind === 'file') rec.data = await a.fonts.get(r);
+      try { await FontStore.put(rec); } catch (e) { /* 置けなくても今回は使う */ }
+      registerCustom(rec);
+      changed = true;
+    } catch (e) { console.warn(`フォント「${r.name}」を読み込めませんでした`, e); }
+  }
+  // このブラウザにだけあるもの（ログインする前に追加したもの）
+  for (const f of local) {
+    if (f.synced || onAccount.has(f.name)) continue;
+    try { await pushFont(f); } catch (e) { console.warn(`フォント「${f.name}」をアカウントに保存できませんでした`, e); }
+  }
+  if (changed) onFontsChanged();
 }
 
 /* ---------- 保存（IndexedDB） ---------- */
@@ -204,6 +273,9 @@ const Store = {
     return e && e.message ? e.message : String(e);
   },
 };
+
+// 読み込み時に、アカウントのフォントを取ってくる
+const fontsSynced = Promise.resolve().then(() => syncFonts()).catch(() => {});
 
 /* ---------- 部品 ---------- */
 const tx = (x, y, w, h, html, o = {}) => ({
