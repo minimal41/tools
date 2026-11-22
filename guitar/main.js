@@ -854,6 +854,10 @@ function start() {
   play.on = true;
   play.g = gOf(state.sel.m, 0);
   play.end = b.measures.length * n;
+  // 曲で使う音を先に作っておく（再生中に作ると音が遅れることがある）
+  const notes = new Set();
+  for (const meas of b.measures) for (const col of Object.values(meas.n)) col.forEach((v, str) => { if (v != null) notes.add((v === 'x' ? 'x' : '') + midiOf(str, v === 'x' ? 0 : v, b.capo)); });
+  audio.prepare([...notes]);
   play.next = audio.now() + 0.08;
   play.queue = [];
   $('play').textContent = '■ 止める';
@@ -884,10 +888,12 @@ function tick() {
       const dir = meas.st[s];
       const strings = [0, 1, 2, 3, 4, 5].filter((i) => col[i] != null);
       if (dir === 'U') strings.reverse();
-      const gap = dir ? 0.012 : 0;
+      // ストロークは弦を順に少しずつずらす。アップは軽めに
+      const gap = dir ? 0.016 : 0;
+      const vel = dir === 'U' ? 0.68 : dir === 'D' ? 0.82 : 0.9;
       strings.forEach((str, i) => {
         const v = col[str];
-        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x');
+        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x', vel * (dir ? 1 - i * 0.03 : 1));
       });
     }
     play.queue.push({ t: play.next, g: play.g });
