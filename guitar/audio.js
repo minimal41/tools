@@ -170,7 +170,7 @@ const ringing = new Array(6).fill(null);
  * string: 0=6弦 … 5=1弦。muted: ブラッシング。velocity: 0〜1。
  * attack: 音の出だしを何秒かけて立ち上げるか（大きいほど柔らかい）
  */
-export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 0.008) {
+export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 0.008, gliss = null) {
   ensure();
   const prev = ringing[str];
   if (prev) {
@@ -198,8 +198,32 @@ export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 
   }
   src.connect(g);
   node.connect(input);
+  let rate = 1;
+  if (gliss) {
+    // グリッサンド（下から入る）：低いところから目的の音まで音程を上げる
+    src.playbackRate.setValueAtTime(Math.pow(2, gliss.from / 12), when);
+    src.playbackRate.exponentialRampToValueAtTime(1, when + gliss.time);
+  }
   src.start(when);
-  ringing[str] = { src, g };
+  ringing[str] = { src, g, rate };
+}
+
+/**
+ * 鳴っている弦の音程を、start から end までに semis 半音ずらす（スライド・グリッサンド）。
+ * fade なら、ずらしながら消していく。鳴っている音がなければ false
+ */
+export function slide(str, semis, start, end, fade = false) {
+  ensure();
+  const r = ringing[str];
+  if (!r) return false;
+  const next = r.rate * Math.pow(2, semis / 12);
+  try {
+    r.src.playbackRate.setValueAtTime(r.rate, start);
+    r.src.playbackRate.exponentialRampToValueAtTime(next, end);
+    if (fade) r.g.gain.setTargetAtTime(0, start, (end - start) / 2.5);
+  } catch { return false; }
+  r.rate = next;
+  return true;
 }
 
 /** 鳴らす前に音を作っておく。'x' で始まるものはブラッシングの音 */

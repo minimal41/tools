@@ -48,7 +48,7 @@ const cache = new Map();
 /** 押さえ方の候補（押さえやすい順）。各要素は 6本分のフレットの配列 */
 export function voicings(root, quality, bass = null, limit = 10) {
   const key = `${root}|${quality}|${bass}`;
-  if (!cache.has(key)) cache.set(key, search(root, quality, bass == null ? root : bass));
+  if (!cache.has(key)) cache.set(key, withEasyShapes(search(root, quality, bass == null ? root : bass), root, quality, bass));
   return cache.get(key).slice(0, limit);
 }
 
@@ -134,6 +134,38 @@ const TEMPLATES = {
   sus4: [[0, 2, 2, 2, 0, 0], ['x', 0, 2, 2, 3, 0]],
   '7sus4': [[0, 2, 0, 2, 0, 0], ['x', 0, 2, 0, 3, 0]],
 };
+/*
+ * よく使われる「簡単な押さえ方」。上の探し方ではベースがルートでなかったり、
+ * 1弦を弾かなかったりして出てこないので、ここで足す（2番目あたりに並べる）。
+ * キーは「ルートの音（C=0）|種類」
+ */
+const EASY = {
+  '5|': [['x', 3, 3, 2, 1, 'x'], ['x', 3, 3, 2, 1, 1], ['x', 'x', 3, 2, 1, 'x']], // 簡単F（5弦はC）、その1弦も押さえる形
+  '5|M7': [['x', 'x', 3, 2, 1, 0]],
+  '5|m': [['x', 3, 3, 1, 1, 'x'], ['x', 'x', 3, 1, 1, 1]],
+  '5|7': [['x', 3, 1, 2, 1, 'x']],
+};
+
+/** 簡単な押さえ方と、5弦ルートのセーハで1弦を弾かない形（B♭ x1333x など）を足す */
+function withEasyShapes(list, root, quality, bass) {
+  if (bass != null && bass !== root) return list;
+  const out = list.slice();
+  const has = (f) => out.some((g) => g.join(',') === f.join(','));
+  const insertAt = (i, f) => { if (!has(f)) out.splice(Math.min(i, out.length), 0, f); };
+  // 5弦ルートのセーハ（A の形）から1弦を外した形を、元の形のすぐ後ろへ
+  for (const t of TEMPLATES[quality] || []) {
+    if (t[0] !== 'x') continue;
+    const r = (root - TUNING[1] % 12 + 12) % 12;
+    if (r < 1 || r > 9) continue;
+    const full = t.map((f) => (f === 'x' ? 'x' : f + r));
+    const muted = full.slice(0, 5).concat('x');
+    const i = out.findIndex((g) => g.join(',') === full.join(','));
+    insertAt(i >= 0 ? i + 1 : out.length, muted);
+  }
+  (EASY[`${root}|${quality}`] || []).forEach((f, k) => insertAt(1 + k, f));
+  return out;
+}
+
 function isBarreTemplate(fr, root, quality) {
   for (const t of TEMPLATES[quality] || []) {
     const string = t[0] === 'x' ? 1 : 0;

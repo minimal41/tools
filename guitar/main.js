@@ -341,9 +341,11 @@ function setLegato(kind) {
   const { m, s, str } = state.sel;
   const meas = body().measures[m];
   const v = meas.n[s]?.[str];
-  if (v == null || v === 'x') { flash('先に、ハンマリング・プリングで鳴らす音（あとの音）のフレットを入れてください。'); return; }
+  if (v == null || v === 'x') { flash('先に、印を付ける音のフレットを入れてください（ハンマリング・プリング・スライドはあとの音）。'); return; }
   const prev = prevNote(m, s, str);
-  if (kind && (!prev || prev.fret === v)) { flash('同じ弦の前（2小節以内）に、高さの違う音があるときに付けられます。'); return; }
+  const needsPrev = kind === 'h' || kind === 'p' || kind === 's' || kind === 'auto';
+  if (needsPrev && (!prev || prev.fret === v)) { flash('同じ弦の前（2小節以内）に、高さの違う音があるときに付けられます。'); return; }
+  if (kind === 'gu' && v === 0) { flash('開放弦には下から入るグリッサンドを付けられません。'); return; }
   if (kind === 'auto') kind = v > prev.fret ? 'h' : 'p';
   const key = `${s}_${str}`;
   edit((b) => {
@@ -694,15 +696,32 @@ function measureSvg(mi) {
     o += `<circle class="stac" cx="${colX(Number(k)) + CW / 2}" cy="${strY(0) + 6.5}" r="2"/>`;
   }
 
-  // ハンマリング・プリング：前の音からの弧と H / P
+  // ハンマリング・プリング（弧と H / P）、スライド（前の音からの斜めの線と S）、グリッサンド（音の前後の短い斜めの線）
   for (const [key, kind] of Object.entries(meas.t || {})) {
     const [s2, str] = key.split('_').map(Number);
-    if (meas.n[s2]?.[str] == null) continue;
+    const v = meas.n[s2]?.[str];
+    if (v == null) continue;
     const x2 = colX(s2) + CW / 2;
+    const ys = strY(str);
+    if (kind === 'gu') {
+      o += `<line class="slide" x1="${x2 - CW * 0.62}" y1="${ys + 4.5}" x2="${x2 - 6}" y2="${ys - 1.5}"/>`;
+      continue;
+    }
+    if (kind === 'gd') {
+      o += `<line class="slide" x1="${x2 + 6}" y1="${ys - 1.5}" x2="${x2 + CW * 0.62}" y2="${ys + 4.5}"/>`;
+      continue;
+    }
     const prev = prevNote(mi, s2, str);
     const x1 = prev && prev.m === mi ? colX(prev.s) + CW / 2 : 2;
-    const y = strY(str) - 6.5;
     const mid = (x1 + x2) / 2;
+    if (kind === 's') {
+      const up = prev ? v > prev.fret : true;
+      const d = up ? 1 : -1;
+      o += `<line class="slide" x1="${x1 + 7}" y1="${ys + 3 * d}" x2="${x2 - 7}" y2="${ys - 3 * d}"/>`;
+      o += `<text class="slurtxt" x="${mid}" y="${ys - 7}">S</text>`;
+      continue;
+    }
+    const y = ys - 6.5;
     o += `<path class="slur" d="M${x1 + 3} ${y}Q${mid} ${y - 7} ${x2 - 3} ${y}"/>`;
     o += `<text class="slurtxt" x="${mid}" y="${y - 5}">${kind === 'h' ? 'H' : 'P'}</text>`;
   }
@@ -811,11 +830,16 @@ function tabPanel() {
   h += `</div></div>`;
 
   const lg = body().measures[m].t?.[`${s}_${state.sel.str}`] || '';
-  h += `<div class="sec"><div class="sec-h">ハンマリング・プリング <small>選んでいる音に付ける（<kbd>H</kbd> <kbd>P</kbd>）</small></div><div class="seg">
+  h += `<div class="sec"><div class="sec-h">ハンマリング・プリング・スライド <small>選んでいる音に付ける</small></div><div class="seg">
     <button type="button" data-legato="h" aria-pressed="${lg === 'h'}">H ハンマリング</button>
     <button type="button" data-legato="p" aria-pressed="${lg === 'p'}">P プリング</button>
+    <button type="button" data-legato="s" aria-pressed="${lg === 's'}">S スライド</button>
+    <button type="button" data-legato="gu" aria-pressed="${lg === 'gu'}">↗ グリッサンド（下から入る）</button>
+    <button type="button" data-legato="gd" aria-pressed="${lg === 'gd'}">↘ グリッサンド（弾いて下へ抜く）</button>
     <button type="button" data-legato="" aria-pressed="false">外す</button></div>
-    <p class="hint">同じ弦の前の音から、選んでいる音へ弾かずに鳴らします。あとの音を選んで押してください。</p>
+    <p class="hint">ハンマリング・プリング・スライドは、同じ弦の前の音から選んでいる音へ弾かずにつなげます（あとの音を選んで押す）。
+      グリッサンドは、選んだ音に下から滑り込む／弾いたあと下へ滑らせて消します。
+      キーボード：<kbd>H</kbd> <kbd>P</kbd> <kbd>/</kbd> スライド・<kbd>G</kbd> 下から入る・<kbd>Shift</kbd>+<kbd>G</kbd> 下へ抜く</p>
     <p class="hint" id="panel-msg" role="status" hidden></p></div>`;
 
   const stac = !!body().measures[m].sc?.[s];
@@ -1007,9 +1031,18 @@ function tick() {
       strings.forEach((str, i) => {
         const v = col[str];
         // ハンマリング・プリングは弾かずに鳴らすので、小さく柔らかく
-        const legato = meas.t?.[`${s}_${str}`];
-        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x',
-          vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008);
+        const mark = meas.t?.[`${s}_${str}`];
+        const when = play.next + i * gap;
+        if (mark === 's' && v !== 'x') {
+          // スライド：前の音を弾き直さずに、音程をずらしていく
+          const prev = prevNote(Math.floor(play.g / n), s, str);
+          if (prev && audio.slide(str, v - prev.fret, Math.max(when - Math.min(0.12, dt * 0.8), audio.now()), when)) return;
+        }
+        const legato = mark === 'h' || mark === 'p';
+        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), when, v === 'x',
+          vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008,
+          mark === 'gu' ? { from: -5, time: Math.min(0.14, dt * 1.2) } : null);
+        if (mark === 'gd') audio.slide(str, -7, when + Math.min(0.25, dt * 1.5), when + Math.min(0.25, dt * 1.5) + 0.22, true);
       });
       if (meas.sc?.[s]) {
         // スタッカート：次の音までの半分くらいで、鳴っている弦を全部止める
@@ -1077,7 +1110,9 @@ function toText() {
         for (let r = 0; r < 6; r++) {
           const v = meas.n[s]?.[5 - r];
           const lg = meas.t?.[`${s}_${5 - r}`];
-          const txt = v == null ? '' : (lg || '') + String(v);
+          const prevF = lg === 's' ? prevNote(i + group.indexOf(meas), s, 5 - r)?.fret : null;
+          const mark = lg === 's' ? (prevF != null && v < prevF ? '\\' : '/') : lg === 'gu' ? '/' : lg === 'h' || lg === 'p' ? lg : '';
+          const txt = v == null ? '' : mark + String(v) + (lg === 'gd' ? '\\' : '');
           rows[r] += (txt + '---').slice(0, W);
         }
       }
@@ -1244,6 +1279,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(0, -1); return; }
   const { m, s, str } = state.sel;
   if (/^[0-9]$/.test(e.key)) { e.preventDefault(); typeDigit(Number(e.key)); return; }
+  if (e.key === '/') { e.preventDefault(); typing = null; setLegato('s'); return; }
+  if (e.key === 'g' || e.key === 'G') { e.preventDefault(); typing = null; setLegato(e.shiftKey ? 'gd' : 'gu'); return; }
   if (e.key === 'h' || e.key === 'H') { e.preventDefault(); typing = null; setLegato('h'); return; }
   if (e.key === 'p' || e.key === 'P') { e.preventDefault(); typing = null; setLegato('p'); return; }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); typing = null; toggleStaccato(); return; }
