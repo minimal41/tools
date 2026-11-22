@@ -140,7 +140,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, .cell:focus-vis
 }
 .playbar .btn { padding: 6px 12px; }
 .playbar #play { min-width: 92px; justify-content: center; }
-.pb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .82rem; margin-left: 6px; }
+.playbar { overflow-x: auto; scrollbar-width: thin; }
+.pb-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 4px; flex: none; }
+.parts { display: flex; gap: 4px; flex: none; }
+.parts .btn { max-width: 160px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+.parts .btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 700; }
+.playbar .btn { flex: none; }
+#play-all[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .panel {
   position: sticky; top: 62px; max-height: calc(100vh - 74px); overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column;
@@ -221,7 +227,10 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
 }
 @media (max-width: 520px) {
   .playbar .btn { padding: 6px 9px; }
-  .pb-title { display: none; }
+  .playbar .lbl { display: none; }
+  .playbar { flex-wrap: wrap; overflow-x: visible; }
+  .pb-sep { display: none; }
+  .parts { flex-wrap: wrap; }
   .field.small select, .field.small input { width: 70px; }
   .sheet { padding: 12px 8px 18px; }
 }
@@ -251,7 +260,7 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
   <section class="songbar" aria-label="曲の設定">
     <label class="field song"><span>曲</span><select id="song-select"></select></label>
     <label class="field title"><span>タイトル</span><input id="title" type="text" maxlength="80"></label>
-    <label class="field small"><span>カポ</span><select id="capo"></select></label>
+    <label class="field small"><span id="capo-label">カポ</span><select id="capo"></select></label>
     <label class="field small"><span>拍子</span>
       <select id="meter"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>
     </label>
@@ -269,9 +278,11 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
 
   <div class="playbar" role="toolbar" aria-label="再生と取り消し">
     <button class="btn primary" id="play" type="button">▶ 再生</button>
-    <button class="btn" id="undo" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶ 戻す</button>
-    <button class="btn" id="redo" type="button" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷ やり直す</button>
-    <span class="pb-title" id="pb-title"></span>
+    <button class="btn" id="undo" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶<span class="lbl"> 戻す</span></button>
+    <button class="btn" id="redo" type="button" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷<span class="lbl"> やり直す</span></button>
+    <span class="pb-sep" aria-hidden="true"></span>
+    <div class="parts" id="parts" role="group" aria-label="パート"></div>
+    <button class="btn" id="play-all" type="button" aria-pressed="true" title="再生で全部のパートを一緒に鳴らすか、表示中のパートだけ鳴らすか">♪ 全パート</button>
   </div>
 
   <div class="main">
@@ -313,6 +324,25 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
     <div class="actions">
       <button class="btn" value="cancel" formnovalidate type="submit">やめる</button>
       <button class="btn primary" value="ok" type="submit">作る</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="part-dialog">
+  <h2>パートの設定</h2>
+  <form method="dialog" id="part-form">
+    <label class="field"><span>パートの名前</span><input class="in" name="name" type="text" maxlength="30"></label>
+    <label class="field"><span>このパートのカポ</span><select class="in" name="capo" id="part-capo"></select></label>
+    <p class="hint">パートごとに小節とカポを持ちます。拍子とテンポは曲全体で共通です。</p>
+    <div class="actions" style="justify-content: space-between; flex-wrap: wrap;">
+      <span style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn" type="button" id="part-copy">このパートを複製</button>
+        <button class="btn danger" type="button" id="part-delete">このパートを削除</button>
+      </span>
+      <span style="display:flex; gap:8px;">
+        <button class="btn" value="cancel" formnovalidate type="submit">やめる</button>
+        <button class="btn primary" value="ok" type="submit">決定</button>
+      </span>
     </div>
   </form>
 </dialog>

@@ -164,15 +164,19 @@ function pluckBuffer(midi, muted) {
   return buf;
 }
 
-const ringing = new Array(6).fill(null);
+// 鳴っている弦。キーは「パートの番号:弦」（パートが違えば同じ弦でも止め合わない）
+const ringing = new Map();
+const keyOf = (voice, str) => `${voice}:${str}`;
+// パートごとの左右の位置（1つ目は真ん中、2つ目は右、3つ目は左…）
+const VOICE_PAN = [0, 0.32, -0.32, 0.18, -0.18];
 
 /**
  * string: 0=6弦 … 5=1弦。muted: ブラッシング。velocity: 0〜1。
  * attack: 音の出だしを何秒かけて立ち上げるか（大きいほど柔らかい）
  */
-export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 0.008, gliss = null) {
+export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 0.008, gliss = null, voice = 0) {
   ensure();
-  const prev = ringing[str];
+  const prev = ringing.get(keyOf(voice, str));
   if (prev) {
     try {
       // 同じ弦を弾き直すと、前の音は指やピックで止まる
@@ -192,7 +196,7 @@ export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 
   let node = g;
   if (ctx.createStereoPanner) {
     const pan = ctx.createStereoPanner();
-    pan.pan.value = (str - 2.5) * 0.06;
+    pan.pan.value = Math.max(-1, Math.min(1, (str - 2.5) * 0.06 + VOICE_PAN[voice % VOICE_PAN.length]));
     g.connect(pan);
     node = pan;
   }
@@ -205,16 +209,16 @@ export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 
     src.playbackRate.exponentialRampToValueAtTime(1, when + gliss.time);
   }
   src.start(when);
-  ringing[str] = { src, g, rate };
+  ringing.set(keyOf(voice, str), { src, g, rate });
 }
 
 /**
  * 鳴っている弦の音程を、start から end までに semis 半音ずらす（スライド・グリッサンド）。
  * fade なら、ずらしながら消していく。鳴っている音がなければ false
  */
-export function slide(str, semis, start, end, fade = false) {
+export function slide(str, semis, start, end, fade = false, voice = 0) {
   ensure();
-  const r = ringing[str];
+  const r = ringing.get(keyOf(voice, str));
   if (!r) return false;
   const next = r.rate * Math.pow(2, semis / 12);
   try {
@@ -236,10 +240,10 @@ export function prepare(keys) {
 }
 
 /** when の時点で、鳴っている弦をすべて止める（スタッカート） */
-export function damp(when) {
+export function damp(when, voice = 0) {
   ensure();
-  ringing.forEach((r) => {
-    if (!r) return;
+  ringing.forEach((r, key) => {
+    if (!r || !key.startsWith(`${voice}:`)) return;
     try { r.g.gain.setTargetAtTime(0, when, 0.018); } catch { /* 無視 */ }
   });
 }
@@ -249,9 +253,8 @@ export function now() { return ensure().currentTime; }
 export function stopAll() {
   if (!ctx) return;
   const t = ctx.currentTime;
-  ringing.forEach((r, i) => {
-    if (!r) return;
+  ringing.forEach((r) => {
     try { r.g.gain.setTargetAtTime(0, t, 0.05); r.src.stop(t + 0.4); } catch { /* 無視 */ }
-    ringing[i] = null;
   });
+  ringing.clear();
 }

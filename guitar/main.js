@@ -8,7 +8,8 @@
  *       未ログイン … このブラウザ（localStorage）
  *
  * 曲のデータ（body）
- *   { capo, meter, tempo, nameMode, measures: [ { n: {step: [6弦…1弦]}, st: {step: 'D'|'U'}, c: {step: {r, q, b, f}} } ] }
+ *   { meter, tempo, nameMode, parts: [ { name, capo, measures } ] }（パートごとに小節とカポを持つ。拍子とテンポは共通）
+ *   measures: [ { n: {step: [6弦…1弦]}, st: {step: 'D'|'U'}, c: {step: {r, q, b, f}} } ] }
  *   フレットは数字（カポからの数）か 'x'。弦の並びは 0 = 6弦 … 5 = 1弦。
  */
 import * as account from '../shared/account.js';
@@ -39,6 +40,8 @@ const state = {
   rhythm: { kind: 'stroke', stroke: 's-8beat', arp: 'a-basic', len: 'end' },
   custom: { stroke: [], arp: [] },
   advance: 2,
+  part: 0, // いま開いているパートの番号
+  playAll: true, // 再生で全パートを鳴らすか
   undo: [], redo: [],
 };
 
@@ -48,15 +51,21 @@ loadPrefs();
 
 const song = () => state.songs[state.currentId];
 const body = () => song()?.body;
+/** 曲データの中の、いま開いているパート */
+const P = (b) => b.parts[Math.min(state.part, b.parts.length - 1)];
+const pt = () => P(body());
 const meter = () => METERS[body()?.meter] || METERS['4/4'];
 const S = () => meter().steps;
 
 function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {} }; }
+function newPart(name, capo = 0, count = 4) {
+  return { name, capo: Number(capo) || 0, measures: Array.from({ length: count }, emptyMeasure) };
+}
 function newBody(opts = {}) {
   return {
-    capo: Number(opts.capo) || 0, meter: METERS[opts.meter] ? opts.meter : '4/4',
+    meter: METERS[opts.meter] ? opts.meter : '4/4',
     tempo: clampTempo(opts.tempo ?? 90), nameMode: 'shape',
-    measures: Array.from({ length: 4 }, emptyMeasure),
+    parts: [newPart('パート1', opts.capo)],
   };
 }
 function clampTempo(v) { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(300, Math.max(30, v)) : 90; }
@@ -68,11 +77,12 @@ function loadPrefs() {
     if (p.custom) Object.assign(state.custom, p.custom);
     if (p.advance != null) state.advance = p.advance;
     if (p.tool) state.tool = p.tool;
+    if (p.playAll != null) state.playAll = !!p.playAll;
   } catch { /* 無視 */ }
 }
 function savePrefs() {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify({ rhythm: state.rhythm, custom: state.custom, advance: state.advance, tool: state.tool }));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ rhythm: state.rhythm, custom: state.custom, advance: state.advance, tool: state.tool, playAll: state.playAll }));
   } catch { /* 無視 */ }
 }
 
@@ -93,8 +103,14 @@ function writeLocal() {
 function normalizeBody(b) {
   const out = newBody(b || {});
   out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
-  if (Array.isArray(b?.measures) && b.measures.length) {
-    out.measures = b.measures.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {} }));
+  const fixMeasures = (ms) => (Array.isArray(ms) && ms.length
+    ? ms.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {} }))
+    : Array.from({ length: 4 }, emptyMeasure));
+  if (Array.isArray(b?.parts) && b.parts.length) {
+    out.parts = b.parts.map((pp, i) => ({ name: pp?.name || `パート${i + 1}`, capo: Number(pp?.capo) || 0, measures: fixMeasures(pp?.measures) }));
+  } else {
+    // パートが無かったころの曲は、1つ目のパートにする
+    out.parts = [{ name: 'パート1', capo: Number(b?.capo) || 0, measures: fixMeasures(b?.measures) }];
   }
   return out;
 }
@@ -220,6 +236,7 @@ function createSong(opts, focus = true) {
 function openSong(id) {
   stop();
   state.currentId = id;
+  state.part = 0;
   state.sel = { m: 0, s: 0, str: 5 };
   state.selChord = null;
   state.undo = []; state.redo = [];
@@ -269,9 +286,10 @@ function redo() {
 }
 function clampSel() {
   const b = body();
-  state.sel.m = Math.min(state.sel.m, b.measures.length - 1);
+  state.part = Math.min(state.part, b.parts.length - 1);
+  state.sel.m = Math.min(state.sel.m, P(b).measures.length - 1);
   state.sel.s = Math.min(state.sel.s, S() - 1);
-  if (state.selChord && !b.measures[state.selChord.m]?.c[state.selChord.s]) state.selChord = null;
+  if (state.selChord && !P(b).measures[state.selChord.m]?.c[state.selChord.s]) state.selChord = null;
 }
 
 /* ---------- 位置 ---------- */
@@ -281,9 +299,9 @@ function setSelG(g, str = state.sel.str) {
   const b = body();
   g = Math.max(0, g);
   const m = Math.floor(g / S());
-  if (m >= b.measures.length) {
+  if (m >= P(b).measures.length) {
     // 最後の小節の先へ進んだら小節を足す
-    while (b.measures.length <= m) b.measures.push(emptyMeasure());
+    while (P(b).measures.length <= m) P(b).measures.push(emptyMeasure());
     scheduleSave();
   }
   state.sel = { m, s: g % S(), str };
@@ -293,7 +311,7 @@ function setSelG(g, str = state.sel.str) {
 function chordAt(m, s) {
   const b = body();
   for (let mm = m; mm >= 0; mm--) {
-    const c = b.measures[mm].c;
+    const c = P(b).measures[mm].c;
     const keys = Object.keys(c).map(Number).filter((k) => mm < m || k <= s).sort((a, b2) => b2 - a);
     if (keys.length) return { m: mm, s: keys[0], ...c[keys[0]] };
   }
@@ -304,7 +322,7 @@ function chordAt(m, s) {
 
 function setFret(m, s, str, v) {
   edit((b) => {
-    const meas = b.measures[m];
+    const meas = P(b).measures[m];
     const col = meas.n[s] ? meas.n[s].slice() : [null, null, null, null, null, null];
     col[str] = v;
     if (v == null || v === 'x') delete meas.t?.[`${s}_${str}`];
@@ -316,18 +334,17 @@ function setFret(m, s, str, v) {
 function toggleStaccato() {
   const { m, s } = state.sel;
   edit((b) => {
-    const meas = b.measures[m];
+    const meas = P(b).measures[m];
     meas.sc ||= {};
     if (meas.sc[s]) delete meas.sc[s]; else meas.sc[s] = 1;
   });
 }
 
 /** 同じ弦で、その位置より前にある音（ハンマリング・プリングの元の音） */
-function prevNote(m, s, str) {
-  const b = body();
+function prevNote(m, s, str, ms = pt().measures) {
   const n = S();
   for (let g = gOf(m, s) - 1; g >= Math.max(0, gOf(m, s) - n * 2); g--) {
-    const v = b.measures[Math.floor(g / n)].n[g % n]?.[str];
+    const v = ms[Math.floor(g / n)]?.n[g % n]?.[str];
     if (v != null) return v === 'x' ? null : { m: Math.floor(g / n), s: g % n, fret: v };
   }
   return null;
@@ -339,7 +356,7 @@ function prevNote(m, s, str) {
  */
 function setLegato(kind) {
   const { m, s, str } = state.sel;
-  const meas = body().measures[m];
+  const meas = pt().measures[m];
   const v = meas.n[s]?.[str];
   if (v == null || v === 'x') { flash('先に、印を付ける音のフレットを入れてください（ハンマリング・プリング・スライドはあとの音）。'); return; }
   const prev = prevNote(m, s, str);
@@ -349,7 +366,7 @@ function setLegato(kind) {
   if (kind === 'auto') kind = v > prev.fret ? 'h' : 'p';
   const key = `${s}_${str}`;
   edit((b) => {
-    const mm = b.measures[m];
+    const mm = P(b).measures[m];
     mm.t ||= {};
     if (!kind || mm.t[key] === kind) delete mm.t[key]; else mm.t[key] = kind;
   });
@@ -368,7 +385,7 @@ function flash(text) {
 function setStroke(v) {
   const { m, s } = state.sel;
   edit((b) => {
-    if (v) b.measures[m].st[s] = v; else delete b.measures[m].st[s];
+    if (v) P(b).measures[m].st[s] = v; else delete P(b).measures[m].st[s];
   });
 }
 
@@ -381,8 +398,8 @@ function typeDigit(d) {
     if (v <= 24) {
       // 1桁目に続けて書きかえる（元に戻すは1回で2桁ぶん戻る）
       const b = body();
-      const col = b.measures[m].n[s].slice();
-      col[str] = v; b.measures[m].n[s] = col;
+      const col = P(b).measures[m].n[s].slice();
+      col[str] = v; P(b).measures[m].n[s] = col;
       typing = null;
       touch();
       return;
@@ -413,7 +430,7 @@ function keypadPut(v) {
 function putChordNotes(strings, frets) {
   const { m, s } = state.sel;
   edit((b) => {
-    const meas = b.measures[m];
+    const meas = P(b).measures[m];
     const col = meas.n[s] ? meas.n[s].slice() : [null, null, null, null, null, null];
     for (const str of strings) col[str] = frets[str];
     meas.n[s] = col;
@@ -473,9 +490,9 @@ function applyChord() {
   const len = Math.max(1, lengthSteps(state.sel.s));
   const n = S();
   edit((b) => {
-    while (b.measures.length * n < start + len) b.measures.push(emptyMeasure());
+    while (P(b).measures.length * n < start + len) P(b).measures.push(emptyMeasure());
     for (let g = start; g < start + len; g++) {
-      const meas = b.measures[Math.floor(g / n)];
+      const meas = P(b).measures[Math.floor(g / n)];
       const s = g % n;
       if (g > start) delete meas.c[s];
       if (pat.kind === 'none') continue;
@@ -506,7 +523,7 @@ function applyChord() {
         if (state.rhythm.stac) (meas.sc ||= {})[s] = 1;
       }
     }
-    const first = b.measures[Math.floor(start / n)];
+    const first = P(b).measures[Math.floor(start / n)];
     first.c[start % n] = { r: state.pick.root, q: state.pick.q, b: state.pick.bass, f: frets.slice() };
   });
   state.selChord = null;
@@ -518,20 +535,20 @@ function removeChordMark() {
   const sc = state.selChord;
   if (!sc) return;
   state.selChord = null; // 先に外す（消したコードを描こうとしないように）
-  edit((b) => { delete b.measures[sc.m].c[sc.s]; });
+  edit((b) => { delete P(b).measures[sc.m].c[sc.s]; });
 }
 
 /** 選んでいる列：コード表示があればそれを、無ければその列の音（矢印・スタッカート・H/P も）を消す */
 function clearColumn() {
   const { m, s } = state.sel;
-  const meas = body().measures[m];
+  const meas = pt().measures[m];
   if (meas.c[s]) {
-    edit((b) => { delete b.measures[m].c[s]; });
+    edit((b) => { delete P(b).measures[m].c[s]; });
     return;
   }
   if (!meas.n[s] && !meas.st[s]) return;
   edit((b) => {
-    const mm = b.measures[m];
+    const mm = P(b).measures[m];
     delete mm.n[s]; delete mm.st[s];
     if (mm.sc) delete mm.sc[s];
     if (mm.t) for (const key of Object.keys(mm.t)) if (parseInt(key, 10) === s) delete mm.t[key];
@@ -540,7 +557,7 @@ function clearColumn() {
 
 /** 楽譜のコードをクリックしたら、そのコードを選んだ状態にする */
 function selectChordMark(m, s) {
-  const c = body().measures[m].c[s];
+  const c = pt().measures[m].c[s];
   if (!c) return;
   state.selChord = { m, s };
   state.sel = { m, s, str: state.sel.str };
@@ -556,18 +573,18 @@ function selectChordMark(m, s) {
 /* ---------- 小節の操作 ---------- */
 
 function addMeasure() {
-  edit((b) => { b.measures.push(emptyMeasure()); });
+  edit((b) => { P(b).measures.push(emptyMeasure()); });
 }
 function insertMeasure() {
-  edit((b) => { b.measures.splice(state.sel.m, 0, emptyMeasure()); });
+  edit((b) => { P(b).measures.splice(state.sel.m, 0, emptyMeasure()); });
 }
 function removeMeasure() {
   const b = body();
-  if (b.measures.length <= 1) return;
-  const meas = b.measures[state.sel.m];
+  if (P(b).measures.length <= 1) return;
+  const meas = P(b).measures[state.sel.m];
   const used = Object.keys(meas.n).length || Object.keys(meas.c).length;
   if (used && !confirm(`${state.sel.m + 1}小節目を消します。よろしいですか？`)) return;
-  edit((bb) => { bb.measures.splice(state.sel.m, 1); });
+  edit((bb) => { P(bb).measures.splice(state.sel.m, 1); });
   clampSel();
   renderAll();
 }
@@ -578,7 +595,7 @@ function changeMeter(next) {
   edit((bb) => {
     bb.meter = next;
     const n = METERS[next].steps;
-    for (const meas of bb.measures) {
+    for (const meas of bb.parts.flatMap((pp) => pp.measures)) {
       for (const k of ['n', 'st', 'c', 'sc', 't']) for (const s of Object.keys(meas[k] || {})) if (parseInt(s, 10) >= n) delete meas[k][s];
     }
   });
@@ -633,12 +650,12 @@ function diagramSvg(frets, x, y, fw = 9.5, sg = 6) {
 
 function displayName(c) {
   const b = body();
-  return chordName(c.r, c.q, c.b, b.nameMode === 'sound' ? b.capo : 0);
+  return chordName(c.r, c.q, c.b, b.nameMode === 'sound' ? P(b).capo : 0);
 }
 
 function measureSvg(mi) {
   const b = body();
-  const meas = b.measures[mi];
+  const meas = P(b).measures[mi];
   const mt = meter();
   const n = mt.steps;
   const W = PADL + n * CW + PADR;
@@ -659,7 +676,7 @@ function measureSvg(mi) {
   // 弦
   for (let str = 0; str < 6; str++) o += `<line class="staff" x1="0" y1="${strY(str)}" x2="${W}" y2="${strY(str)}"/>`;
   o += `<line class="bar" x1="0.6" y1="${STR_Y0}" x2="0.6" y2="${strY(0)}"/><line class="bar" x1="${W - 0.6}" y1="${STR_Y0}" x2="${W - 0.6}" y2="${strY(0)}"/>`;
-  if (mi === b.measures.length - 1) o += `<line class="bar" x1="${W - 3.5}" y1="${STR_Y0}" x2="${W - 3.5}" y2="${strY(0)}"/>`;
+  if (mi === P(b).measures.length - 1) o += `<line class="bar" x1="${W - 3.5}" y1="${STR_Y0}" x2="${W - 3.5}" y2="${strY(0)}"/>`;
 
   // 拍の番号
   const labStep = mt.sub || mt.beat;
@@ -757,16 +774,16 @@ function measureSvg(mi) {
 function renderScore() {
   const b = body();
   if (!b) return;
-  $('score').innerHTML = b.measures.map((_, i) => measureSvg(i)).join('');
+  $('score').innerHTML = P(b).measures.map((_, i) => measureSvg(i)).join('');
   const sg = song();
   $('sheet-title').textContent = sg.title;
-  $('pb-title').textContent = sg.title;
   const meta = [];
-  meta.push(b.capo ? `<span><b>Capo ${b.capo}</b></span>` : '<span>カポなし</span>');
+  if (b.parts.length > 1) meta.push(`<span><b>${esc(P(b).name)}</b></span>`);
+  meta.push(P(b).capo ? `<span><b>Capo ${P(b).capo}</b></span>` : '<span>カポなし</span>');
   meta.push(`<span>${esc(b.meter)}</span>`, `<span>♩ = ${b.tempo}</span>`);
-  if (b.capo) meta.push(`<span>コード名：${b.nameMode === 'sound' ? '実音' : '押さえ方'}</span>`);
+  if (P(b).capo) meta.push(`<span>コード名：${b.nameMode === 'sound' ? '実音' : '押さえ方'}</span>`);
   $('sheet-meta').innerHTML = meta.join('');
-  $('remove-measure').disabled = b.measures.length <= 1;
+  $('remove-measure').disabled = P(b).measures.length <= 1;
 }
 
 function renderSongbar() {
@@ -775,12 +792,59 @@ function renderSongbar() {
   const sel = $('song-select');
   sel.innerHTML = state.order.map((id) => `<option value="${id}"${id === state.currentId ? ' selected' : ''}>${esc(state.songs[id].title || '無題')}</option>`).join('');
   if (document.activeElement !== $('title')) $('title').value = sg.title;
-  $('capo').value = b.capo;
+  $('capo').value = P(b).capo;
   $('meter').value = b.meter;
   if (document.activeElement !== $('tempo')) $('tempo').value = b.tempo;
   $('namemode').value = b.nameMode;
   $('undo').disabled = !state.undo.length;
   $('redo').disabled = !state.redo.length;
+  $('capo-label').textContent = b.parts.length > 1 ? `カポ（${P(b).name}）` : 'カポ';
+  renderParts();
+}
+
+/* ---------- パート ---------- */
+
+function renderParts() {
+  const b = body();
+  $('parts').innerHTML = b.parts.map((pp, i) => `<button type="button" class="btn${i === state.part ? ' on' : ''}" data-part="${i}" aria-pressed="${i === state.part}" title="${esc(pp.name)}${i === state.part ? '（もう一度押すと設定）' : ''}">${esc(pp.name)}</button>`).join('')
+    + `<button type="button" class="btn" data-part="add" title="パートを足す">＋<span class="lbl"> パート</span></button>`
+    + `<button type="button" class="btn" data-part="menu" title="このパートの名前・カポ・複製・削除" aria-label="パートの設定">⋯</button>`;
+  $('play-all').setAttribute('aria-pressed', state.playAll);
+  $('play-all').hidden = b.parts.length < 2;
+}
+
+function switchPart(i) {
+  if (i === state.part) return;
+  state.part = i;
+  state.selChord = null;
+  typing = null;
+  clampSel();
+  renderAll();
+}
+
+function addPart(copy = false) {
+  const cur = pt();
+  let made;
+  edit((b) => {
+    const name = `パート${b.parts.length + 1}`;
+    made = copy
+      ? { ...structuredClone(cur), name: `${cur.name}のコピー` }
+      : newPart(name, cur.capo, cur.measures.length);
+    b.parts.push(made);
+  });
+  state.part = body().parts.length - 1;
+  state.selChord = null;
+  clampSel();
+  renderAll();
+}
+
+function openPartDialog() {
+  const f = $('part-form');
+  f.name.value = pt().name;
+  f.capo.value = String(pt().capo);
+  $('part-delete').disabled = body().parts.length < 2;
+  $('part-dialog').showModal();
+  f.name.select();
 }
 
 /* ---------- パネル ---------- */
@@ -802,11 +866,11 @@ function whereText() {
 
 function tabPanel() {
   const { m, s } = state.sel;
-  const st = body().measures[m].st[s] || '';
+  const st = pt().measures[m].st[s] || '';
   const frets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 'x'];
   let h = `<div class="pbody">`;
   if (state.selChord) {
-    const c = body().measures[state.selChord.m].c[state.selChord.s];
+    const c = pt().measures[state.selChord.m].c[state.selChord.s];
     h += `<div class="selchord">楽譜の <b>${esc(displayName(c))}</b>（${state.selChord.m + 1}小節目）を選んでいます<span class="sp"></span>
       <button type="button" class="btn danger" data-act="del-chord">コード表示を消す</button></div>
       <p class="hint">Delete か Backspace でも消せます。</p>`;
@@ -829,7 +893,7 @@ function tabPanel() {
   for (const [v, l] of [['D', '↓ ダウン'], ['U', '↑ アップ'], ['', 'なし']]) h += `<button type="button" data-stroke="${v}" aria-pressed="${st === v}">${l}</button>`;
   h += `</div></div>`;
 
-  const lg = body().measures[m].t?.[`${s}_${state.sel.str}`] || '';
+  const lg = pt().measures[m].t?.[`${s}_${state.sel.str}`] || '';
   h += `<div class="sec"><div class="sec-h">ハンマリング・プリング・スライド <small>選んでいる音に付ける</small></div><div class="seg">
     <button type="button" data-legato="h" aria-pressed="${lg === 'h'}">H ハンマリング</button>
     <button type="button" data-legato="p" aria-pressed="${lg === 'p'}">P プリング</button>
@@ -842,7 +906,7 @@ function tabPanel() {
       キーボード：<kbd>H</kbd> <kbd>P</kbd> <kbd>/</kbd> スライド・<kbd>G</kbd> 下から入る・<kbd>Shift</kbd>+<kbd>G</kbd> 下へ抜く</p>
     <p class="hint" id="panel-msg" role="status" hidden></p></div>`;
 
-  const stac = !!body().measures[m].sc?.[s];
+  const stac = !!pt().measures[m].sc?.[s];
   h += `<div class="sec"><div class="sec-h">スタッカート <small>この位置の音を短く切る（キーボード <kbd>S</kbd>）</small></div><div class="seg">
     <button type="button" data-act="stac" aria-pressed="${stac}">・ スタッカート${stac ? '（付いています）' : ''}</button></div></div>`;
 
@@ -867,11 +931,11 @@ function chordPanel() {
   if (p.vi >= list.length) p.vi = 0;
   const shown = p.showAll ? list : list.slice(0, 8);
   const name = chordName(p.root, p.q, p.bass);
-  const sound = b.capo ? chordName(p.root, p.q, p.bass, b.capo) : '';
+  const sound = P(b).capo ? chordName(p.root, p.q, p.bass, P(b).capo) : '';
   let h = `<div class="pbody">`;
 
   if (state.selChord) {
-    const c = b.measures[state.selChord.m].c[state.selChord.s];
+    const c = P(b).measures[state.selChord.m].c[state.selChord.s];
     h += `<div class="selchord">楽譜の <b>${esc(displayName(c))}</b>（${state.selChord.m + 1}小節目）を選んでいます<span class="sp"></span>
       <button type="button" class="btn danger" data-act="del-chord">コード表示を消す</button></div>`;
   }
@@ -879,7 +943,7 @@ function chordPanel() {
   h += `<div class="sec"><div class="sec-h">入れる位置</div><div class="where">${whereText()}</div>
     <p class="hint">楽譜の上をクリックして、コードを始める位置を選びます。Delete か Backspace で、選んだ位置のコード（無ければその位置の音）を消せます。</p></div>`;
 
-  h += `<div class="sec"><div class="sec-h">コード</div><div class="cname-big">${esc(name)}${sound ? `<small>カポ${b.capo}の実音：${esc(sound)}</small>` : ''}</div>`;
+  h += `<div class="sec"><div class="sec-h">コード</div><div class="cname-big">${esc(name)}${sound ? `<small>カポ${P(b).capo}の実音：${esc(sound)}</small>` : ''}</div>`;
   h += `<div class="roots">`;
   ROOTS.forEach((r, i) => { h += `<button type="button" data-root="${i}" aria-pressed="${p.root === i}" title="${ROOT_LABELS[i]}">${r}</button>`; });
   h += `</div><div class="row2">
@@ -990,10 +1054,13 @@ function start() {
   const n = S();
   play.on = true;
   play.g = gOf(state.sel.m, 0);
-  play.end = b.measures.length * n;
+  play.parts = state.playAll ? b.parts.map((pp, i) => ({ p: pp, i })) : [{ p: P(b), i: state.part }];
+  play.end = Math.max(...play.parts.map(({ p }) => p.measures.length)) * n;
   // 曲で使う音を先に作っておく（再生中に作ると音が遅れることがある）
   const notes = new Set();
-  for (const meas of b.measures) for (const col of Object.values(meas.n)) col.forEach((v, str) => { if (v != null) notes.add((v === 'x' ? 'x' : '') + midiOf(str, v === 'x' ? 0 : v, b.capo)); });
+  for (const { p } of play.parts) {
+    for (const meas of p.measures) for (const col of Object.values(meas.n)) col.forEach((v, str) => { if (v != null) notes.add((v === 'x' ? 'x' : '') + midiOf(str, v === 'x' ? 0 : v, p.capo)); });
+  }
   audio.prepare([...notes]);
   play.next = audio.now() + 0.08;
   play.queue = [];
@@ -1018,48 +1085,55 @@ function tick() {
   const dt = 60 / b.tempo / 4;
   while (play.next < audio.now() + 0.15) {
     if (play.g >= play.end) return;
-    const meas = b.measures[Math.floor(play.g / n)];
     const s = play.g % n;
-    const col = meas?.n[s];
-    if (col) {
-      const dir = meas.st[s];
-      const strings = [0, 1, 2, 3, 4, 5].filter((i) => col[i] != null);
-      if (dir === 'U') strings.reverse();
-      // ストロークは弦を順に少しずつずらす。アップは軽めに
-      const gap = dir ? 0.016 : 0;
-      const vel = dir === 'U' ? 0.68 : dir === 'D' ? 0.82 : 0.9;
-      strings.forEach((str, i) => {
-        const v = col[str];
-        // ハンマリング・プリングは弾かずに鳴らすので、小さく柔らかく
-        const mark = meas.t?.[`${s}_${str}`];
-        const when = play.next + i * gap;
-        if (mark === 's' && v !== 'x') {
-          // スライド：前の音を弾き直さずに、音程をずらしていく
-          const prev = prevNote(Math.floor(play.g / n), s, str);
-          if (prev && audio.slide(str, v - prev.fret, Math.max(when - Math.min(0.12, dt * 0.8), audio.now()), when)) return;
-        }
-        const legato = mark === 'h' || mark === 'p';
-        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), when, v === 'x',
-          vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008,
-          mark === 'gu' ? { from: -5, time: Math.min(0.14, dt * 1.2) } : null);
-        if (mark === 'gd') audio.slide(str, -7, when + Math.min(0.25, dt * 1.5), when + Math.min(0.25, dt * 1.5) + 0.22, true);
-      });
-      if (meas.sc?.[s]) {
-        // スタッカート：次の音までの半分くらいで、鳴っている弦を全部止める
-        let k = 1;
-        while (k < 4) {
-          const g2 = play.g + k;
-          if (b.measures[Math.floor(g2 / n)]?.n[g2 % n]) break;
-          k++;
-        }
-        audio.damp(play.next + strings.length * gap + Math.max(0.07, k * dt * 0.5));
-      }
-    }
+    for (const { p: part, i: voice } of play.parts) playStep(part, voice, s, n, dt);
     play.queue.push({ t: play.next, g: play.g });
     play.g++;
     play.next += dt;
   }
 }
+/** 1つのパートの、いまの位置の音を鳴らす（voice：パートごとに弦の鳴り方を分ける番号） */
+function playStep(part, voice, s, n, dt) {
+  const ms = part.measures;
+  const capo = part.capo;
+  const mi = Math.floor(play.g / n);
+  const meas = ms[mi];
+  const col = meas?.n[s];
+  if (!col) return;
+  const dir = meas.st[s];
+  const strings = [0, 1, 2, 3, 4, 5].filter((i) => col[i] != null);
+  if (dir === 'U') strings.reverse();
+  // ストロークは弦を順に少しずつずらす。アップは軽めに
+  const gap = dir ? 0.016 : 0;
+  const vel = dir === 'U' ? 0.68 : dir === 'D' ? 0.82 : 0.9;
+  strings.forEach((str, i) => {
+    const v = col[str];
+    const mark = meas.t?.[`${s}_${str}`];
+    const when = play.next + i * gap;
+    if (mark === 's' && v !== 'x') {
+      // スライド：前の音を弾き直さずに、音程をずらしていく
+      const prev = prevNote(mi, s, str, ms);
+      if (prev && audio.slide(str, v - prev.fret, Math.max(when - Math.min(0.12, dt * 0.8), audio.now()), when, false, voice)) return;
+    }
+    // ハンマリング・プリングは弾かずに鳴らすので、小さく柔らかく
+    const legato = mark === 'h' || mark === 'p';
+    audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, capo), when, v === 'x',
+      vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008,
+      mark === 'gu' ? { from: -5, time: Math.min(0.14, dt * 1.2) } : null, voice);
+    if (mark === 'gd') audio.slide(str, -7, when + Math.min(0.25, dt * 1.5), when + Math.min(0.25, dt * 1.5) + 0.22, true, voice);
+  });
+  if (meas.sc?.[s]) {
+    // スタッカート：次の音までの半分くらいで、このパートの鳴っている弦を全部止める
+    let k = 1;
+    while (k < 4) {
+      const g2 = play.g + k;
+      if (ms[Math.floor(g2 / n)]?.n[g2 % n]) break;
+      k++;
+    }
+    audio.damp(play.next + strings.length * gap + Math.max(0.07, k * dt * 0.5), voice);
+  }
+}
+
 function drawHead() {
   if (!play.on) return;
   const t = audio.now();
@@ -1088,11 +1162,11 @@ function toText() {
   const sg = song();
   const n = S();
   const W = 3;
-  const lines = [sg.title, (b.capo ? `Capo ${b.capo}` : 'カポなし') + `  ${b.meter}  ♩=${b.tempo}`, ''];
+  const lines = [sg.title + (b.parts.length > 1 ? `（${P(b).name}）` : ''), (P(b).capo ? `Capo ${P(b).capo}` : 'カポなし') + `  ${b.meter}  ♩=${b.tempo}`, ''];
   const perLine = n >= 16 ? 4 : 6;
   const labels = ['e', 'B', 'G', 'D', 'A', 'E'];
-  for (let i = 0; i < b.measures.length; i += perLine) {
-    const group = b.measures.slice(i, i + perLine);
+  for (let i = 0; i < P(b).measures.length; i += perLine) {
+    const group = P(b).measures.slice(i, i + perLine);
     let chordLine = '  ', strokeLine = '  ';
     const rows = labels.map((l) => l + '|');
     group.forEach((meas) => {
@@ -1141,15 +1215,49 @@ $('title').addEventListener('input', (e) => {
   song().updatedAt = Date.now();
   scheduleSave();
   $('sheet-title').textContent = e.target.value;
-  $('pb-title').textContent = e.target.value;
   const opt = $('song-select').selectedOptions[0];
   if (opt) opt.textContent = e.target.value || '無題';
 });
-$('capo').addEventListener('change', (e) => { edit((b) => { b.capo = Number(e.target.value); }); });
+$('capo').addEventListener('change', (e) => { edit((b) => { P(b).capo = Number(e.target.value); }); });
 $('meter').addEventListener('change', (e) => changeMeter(e.target.value));
 $('tempo').addEventListener('change', (e) => { edit((b) => { b.tempo = clampTempo(e.target.value); }); });
 $('namemode').addEventListener('change', (e) => { edit((b) => { b.nameMode = e.target.value; }); });
 $('undo').addEventListener('click', undo);
+$('parts').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-part]');
+  if (!t) return;
+  const v = t.dataset.part;
+  if (v === 'add') addPart();
+  else if (v === 'menu') openPartDialog();
+  else if (Number(v) === state.part) openPartDialog();
+  else switchPart(Number(v));
+});
+$('play-all').addEventListener('click', () => {
+  state.playAll = !state.playAll;
+  savePrefs();
+  renderParts();
+});
+fillCapoOptions($('part-capo'));
+$('part-dialog').addEventListener('close', () => {
+  if ($('part-dialog').returnValue !== 'ok') return;
+  const f = $('part-form');
+  const name = f.name.value.trim() || pt().name;
+  const capo = Number(f.capo.value) || 0;
+  if (name === pt().name && capo === pt().capo) return;
+  edit((b) => { P(b).name = name; P(b).capo = capo; });
+});
+$('part-copy').addEventListener('click', () => { $('part-dialog').close('cancel'); addPart(true); });
+$('part-delete').addEventListener('click', () => {
+  if (body().parts.length < 2) return;
+  if (!confirm(`「${pt().name}」を削除します。よろしいですか？（「戻す」で元に戻せます）`)) return;
+  $('part-dialog').close('cancel');
+  const i = state.part;
+  edit((b) => { b.parts.splice(i, 1); });
+  state.part = Math.max(0, i - 1);
+  state.selChord = null;
+  clampSel();
+  renderAll();
+});
 $('redo').addEventListener('click', redo);
 $('play').addEventListener('click', () => (play.on ? stop() : start()));
 $('print').addEventListener('click', () => window.print());
@@ -1287,7 +1395,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'x' || e.key === 'X') { e.preventDefault(); typing = null; setFret(m, s, str, 'x'); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault(); typing = null;
-    if (body().measures[m].n[s]?.[str] != null) setFret(m, s, str, null);
+    if (pt().measures[m].n[s]?.[str] != null) setFret(m, s, str, null);
     else if (e.key === 'Backspace') moveSel(-1);
   }
 });
