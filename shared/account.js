@@ -425,3 +425,27 @@ export const checklists = {
     await deleteDoc(doc(checklistCol(), id));
   },
 };
+
+/* ---------- ギター譜 ---------- */
+
+// Firestore の users/{uid}/guitarTabs/{id} に保存する。曲の中身は data に JSON の文字列で入れる
+// （Firestore は配列の中に配列を入れられないため）
+function guitarCol() {
+  if (!currentUser || !db) throw Object.assign(new Error('ログインしていません。'), { code: 'tools/not-logged-in' });
+  return collection(db, 'users', currentUser.uid, 'guitarTabs');
+}
+
+export const guitarTabs = {
+  /** すべての曲：{ id, title, data, createdAt, updatedAt } */
+  async list() {
+    const snap = await getDocs(guitarCol());
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  },
+  async put(song) {
+    const { id, ...data } = song;
+    await setDoc(doc(guitarCol(), id), data);
+  },
+  async remove(id) {
+    await deleteDoc(doc(guitarCol(), id));
+  },
+};

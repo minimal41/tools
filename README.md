@@ -5,6 +5,7 @@
 | [Convrt](convrt/) | 画像・PDF・EPUB・音声の変換（直近3回の変換結果をブラウザに保存） |
 | [スライド](slides/) | 発表用スライドの作成（ログイン中は Vercel、未ログインはブラウザに保存） |
 | [チェックリスト](checklist/) | チェックリストの作成（ログイン中はアカウント、未ログインはブラウザに保存） |
+| [ギター譜](guitar/) | TAB 譜の作成。コード・押さえ方・リズム（ストローク / アルペジオ）を選んで流し込み、カポ・再生・印刷に対応（ログイン中はアカウント、未ログインはブラウザに保存） |
 | [席替え](change-seats/) | 座席表の作成（直近3回の席替えをブラウザに保存） |
 | [Making Site](makingsite/) | パーツを組み立ててホームページを作成（[minimal41/makingsite](https://github.com/minimal41/makingsite) から取り込み） |
 | [Sheetbase](sheetbase/) | Google スプレッドシートをデータベースにするサーバー |
@@ -21,6 +22,7 @@
 | ユーザー情報（`users/{uid}`: email, displayName, createdAt, lastLoginAt） | Cloud Firestore |
 | Making Site のサイト | Vercel（`api/sites.js` → Postgres の `sites` テーブル） |
 | チェックリスト | Cloud Firestore（`users/{uid}/checklists/{id}`。`firestore.rules` で本人だけが読み書きできる） |
+| ギター譜 | Cloud Firestore（`users/{uid}/guitarTabs/{id}`。曲の中身は `data` に JSON 文字列で保存） |
 | スライド | Vercel（`api/decks.js` → Postgres の `decks` テーブル） |
 | スライドに追加したフォント | Vercel（`api/fonts.js` → Postgres の `fonts`・`font_chunks` テーブル） |
 | ログインの控え | Vercel（`api/session.js` → ブラウザの Cookie。データベースは使わない） |
