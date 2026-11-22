@@ -243,8 +243,10 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
   .main { display: block; }
   .sheet { border: 0; padding: 0; }
   @page { size: A4 portrait; margin: 12mm; }
-  /* 1行に4小節（main.js が印刷用に細いマスで描き直す） */
+  /* 1行に4小節（main.js が印刷用に細いマスで描き直す）。入り切らない行は2小節 */
   .score svg.measure { break-inside: avoid; width: calc(25% + 1px) !important; height: auto !important; }
+  /* 4小節だと入り切らない行は2小節（main.js が print-half を付ける） */
+  .score svg.measure.print-half { width: calc(50% + 1px) !important; }
 }
 </style>
 </head>

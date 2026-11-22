@@ -540,9 +540,52 @@ function changeMeter(next) {
 
 // 印刷のときは1行に4小節入るように、マスを細くして描き直す（CSS で幅を 1/4 にする）
 let CW = 24, PADL = 10, PADR = 8;
+const SCREEN_LAYOUT = [24, 10, 8];
+const PRINT_LAYOUT = [16, 8, 4]; // 1行に4小節のときの細いマス
+let printing = false;
 function setPrintLayout(on) {
-  [CW, PADL, PADR] = on ? [16, 8, 4] : [24, 10, 8];
+  printing = on;
+  [CW, PADL, PADR] = on ? PRINT_LAYOUT : SCREEN_LAYOUT;
   renderScore();
+}
+
+/**
+ * 印刷で1行に4小節（細いマス）にすると、文字や図が重なってしまう小節か。
+ * コード名が次のコードまでに収まらない、または同じ弦の隣り合うマスに2桁のフレットがあるとき
+ */
+function tooTightForFour(meas) {
+  const cw = PRINT_LAYOUT[0];
+  const n = S();
+  const keys = Object.keys(meas.c).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i < keys.length; i++) {
+    const room = ((i + 1 < keys.length ? keys[i + 1] : n + 1) - keys[i]) * cw;
+    const nameW = [...displayName(meas.c[keys[i]])].length * 7.2 + 6;
+    if (room < nameW) return true;
+  }
+  for (let s = 0; s + 1 < n; s++) {
+    const a = meas.n[s], b = meas.n[s + 1];
+    if (!a || !b) continue;
+    for (let str = 0; str < 6; str++) {
+      if (a[str] == null || b[str] == null) continue;
+      if (String(a[str]).length > 1 || String(b[str]).length > 1) return true;
+    }
+  }
+  return false;
+}
+
+/** 印刷用：4小節ずつ並べ、入り切らない小節がある行は2小節にする（2小節の行は画面と同じ太さのマス） */
+function printScoreHtml(ms) {
+  let html = '';
+  for (let i = 0; i < ms.length;) {
+    const four = ms.slice(i, i + 4);
+    const two = four.some(tooTightForFour);
+    const count = two ? Math.min(2, ms.length - i) : Math.min(4, ms.length - i);
+    [CW, PADL, PADR] = two ? SCREEN_LAYOUT : PRINT_LAYOUT;
+    for (let k = 0; k < count; k++) html += measureSvg(i + k, two ? 'half' : 'quarter');
+    i += count;
+  }
+  [CW, PADL, PADR] = PRINT_LAYOUT;
+  return html;
 }
 window.addEventListener('beforeprint', () => setPrintLayout(true));
 window.addEventListener('afterprint', () => setPrintLayout(false));
@@ -586,7 +629,7 @@ function displayName(c) {
   return chordName(c.r, c.q, c.b, b.nameMode === 'sound' ? P(b).capo : 0);
 }
 
-function measureSvg(mi) {
+function measureSvg(mi, printWidth = '') {
   const b = body();
   const meas = P(b).measures[mi];
   const mt = meter();
@@ -594,7 +637,7 @@ function measureSvg(mi) {
   const W = PADL + n * CW + PADR;
   const sel = state.sel;
   const isSelM = sel.m === mi;
-  let o = `<svg class="measure" data-m="${mi}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="group" aria-label="${mi + 1}小節目">`;
+  let o = `<svg class="measure${printWidth ? ' print-' + printWidth : ''}" data-m="${mi}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="group" aria-label="${mi + 1}小節目">`;
   o += `<text class="num" x="2" y="10">${mi + 1}</text>`;
 
   // 列のクリック範囲（上のコード欄）
@@ -707,7 +750,7 @@ function measureSvg(mi) {
 function renderScore() {
   const b = body();
   if (!b) return;
-  $('score').innerHTML = P(b).measures.map((_, i) => measureSvg(i)).join('');
+  $('score').innerHTML = printing ? printScoreHtml(P(b).measures) : P(b).measures.map((_, i) => measureSvg(i)).join('');
   const sg = song();
   $('sheet-title').textContent = sg.title;
   const meta = [];
