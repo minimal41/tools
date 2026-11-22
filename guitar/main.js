@@ -543,8 +543,16 @@ let CW = 24, PADL = 10, PADR = 8;
 const SCREEN_LAYOUT = [24, 10, 8];
 const PRINT_LAYOUT = [16, 8, 4]; // 1行に4小節のときの細いマス
 let printing = false;
+let screenTitle = '';
 function setPrintLayout(on) {
   printing = on;
+  // PDF に保存するときのファイル名は、ページのタイトルから付く。「曲名_Part1」のようにパートの番号を付ける
+  if (on) {
+    screenTitle = document.title;
+    if (song()) document.title = `${(song().title || '無題').trim()}_Part${state.part + 1}`;
+  } else if (screenTitle) {
+    document.title = screenTitle;
+  }
   [CW, PADL, PADR] = on ? PRINT_LAYOUT : SCREEN_LAYOUT;
   renderScore();
 }
