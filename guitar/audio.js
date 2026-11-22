@@ -149,7 +149,7 @@ function pluckBuffer(midi, muted) {
   const buf = ctx.createBuffer(2, len, sr);
   // 低い弦ほど長く響く。高い音ほど明るさを少し抑える
   const t60 = muted ? 0.05 : Math.min(8, Math.max(3.5, 8 - (midi - 40) * 0.1));
-  const bright = muted ? 0.25 : Math.min(0.92, 0.55 + (76 - midi) * 0.008);
+  const bright = muted ? 0.2 : Math.min(0.72, 0.4 + (76 - midi) * 0.007); // 低めにして出だしの硬さを抑える
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
     // 2本ぶんの振動を少しずらして重ね、弦とボディの複雑な揺れを出す
@@ -166,8 +166,11 @@ function pluckBuffer(midi, muted) {
 
 const ringing = new Array(6).fill(null);
 
-/** string: 0=6弦 … 5=1弦。muted: ブラッシング。velocity: 0〜1 */
-export function pluck(str, midi, when, muted = false, velocity = 0.85) {
+/**
+ * string: 0=6弦 … 5=1弦。muted: ブラッシング。velocity: 0〜1。
+ * attack: 音の出だしを何秒かけて立ち上げるか（大きいほど柔らかい）
+ */
+export function pluck(str, midi, when, muted = false, velocity = 0.85, attack = 0.008) {
   ensure();
   const prev = ringing[str];
   if (prev) {
@@ -180,7 +183,11 @@ export function pluck(str, midi, when, muted = false, velocity = 0.85) {
   const src = ctx.createBufferSource();
   src.buffer = pluckBuffer(midi, muted);
   const g = ctx.createGain();
-  g.gain.value = (muted ? 0.5 : 0.7) * velocity;
+  const peak = (muted ? 0.5 : 0.7) * velocity;
+  // 出だしを少しだけゆっくり立ち上げて、弦に指やピックが当たる硬さを丸める
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(peak * 0.85, when + attack);
+  g.gain.setTargetAtTime(peak, when + attack, attack * 1.5);
   // 低い弦は少し左、高い弦は少し右に置く
   let node = g;
   if (ctx.createStereoPanner) {

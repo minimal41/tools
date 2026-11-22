@@ -51,7 +51,7 @@ const body = () => song()?.body;
 const meter = () => METERS[body()?.meter] || METERS['4/4'];
 const S = () => meter().steps;
 
-function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {} }; }
+function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {} }; }
 function newBody(opts = {}) {
   return {
     capo: Number(opts.capo) || 0, meter: METERS[opts.meter] ? opts.meter : '4/4',
@@ -94,7 +94,7 @@ function normalizeBody(b) {
   const out = newBody(b || {});
   out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
   if (Array.isArray(b?.measures) && b.measures.length) {
-    out.measures = b.measures.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {} }));
+    out.measures = b.measures.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {} }));
   }
   return out;
 }
@@ -307,6 +307,7 @@ function setFret(m, s, str, v) {
     const meas = b.measures[m];
     const col = meas.n[s] ? meas.n[s].slice() : [null, null, null, null, null, null];
     col[str] = v;
+    if (v == null || v === 'x') delete meas.t?.[`${s}_${str}`];
     if (col.every((x) => x == null)) { delete meas.n[s]; delete meas.st[s]; delete meas.sc?.[s]; } else meas.n[s] = col;
   });
 }
@@ -319,6 +320,47 @@ function toggleStaccato() {
     meas.sc ||= {};
     if (meas.sc[s]) delete meas.sc[s]; else meas.sc[s] = 1;
   });
+}
+
+/** 同じ弦で、その位置より前にある音（ハンマリング・プリングの元の音） */
+function prevNote(m, s, str) {
+  const b = body();
+  const n = S();
+  for (let g = gOf(m, s) - 1; g >= Math.max(0, gOf(m, s) - n * 2); g--) {
+    const v = b.measures[Math.floor(g / n)].n[g % n]?.[str];
+    if (v != null) return v === 'x' ? null : { m: Math.floor(g / n), s: g % n, fret: v };
+  }
+  return null;
+}
+
+/**
+ * ハンマリング（h）・プリング（p）を、選んでいる音に付ける。
+ * kind が 'auto' なら、前の音より高ければハンマリング、低ければプリング。同じ印をもう一度付けると外す
+ */
+function setLegato(kind) {
+  const { m, s, str } = state.sel;
+  const meas = body().measures[m];
+  const v = meas.n[s]?.[str];
+  if (v == null || v === 'x') { flash('先に、ハンマリング・プリングで鳴らす音（あとの音）のフレットを入れてください。'); return; }
+  const prev = prevNote(m, s, str);
+  if (kind && (!prev || prev.fret === v)) { flash('同じ弦の前（2小節以内）に、高さの違う音があるときに付けられます。'); return; }
+  if (kind === 'auto') kind = v > prev.fret ? 'h' : 'p';
+  const key = `${s}_${str}`;
+  edit((b) => {
+    const mm = b.measures[m];
+    mm.t ||= {};
+    if (!kind || mm.t[key] === kind) delete mm.t[key]; else mm.t[key] = kind;
+  });
+}
+
+let flashTimer = 0;
+function flash(text) {
+  const el = document.getElementById('panel-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
 
 function setStroke(v) {
@@ -436,6 +478,7 @@ function applyChord() {
       if (g > start) delete meas.c[s];
       if (pat.kind === 'none') continue;
       delete meas.n[s]; delete meas.st[s]; if (meas.sc) delete meas.sc[s];
+      if (meas.t) for (const key of Object.keys(meas.t)) if (parseInt(key, 10) === s) delete meas.t[key];
       let tok = null;
       if (pat.kind === 'stroke') {
         if (s % pat.res === 0) tok = pat.tokens[(s / pat.res) % pat.tokens.length];
@@ -518,7 +561,7 @@ function changeMeter(next) {
     bb.meter = next;
     const n = METERS[next].steps;
     for (const meas of bb.measures) {
-      for (const k of ['n', 'st', 'c', 'sc']) for (const s of Object.keys(meas[k])) if (Number(s) >= n) delete meas[k][s];
+      for (const k of ['n', 'st', 'c', 'sc', 't']) for (const s of Object.keys(meas[k] || {})) if (parseInt(s, 10) >= n) delete meas[k][s];
     }
   });
   clampSel();
@@ -635,6 +678,19 @@ function measureSvg(mi) {
     o += `<circle class="stac" cx="${colX(Number(k)) + CW / 2}" cy="${strY(0) + 6.5}" r="2"/>`;
   }
 
+  // ハンマリング・プリング：前の音からの弧と H / P
+  for (const [key, kind] of Object.entries(meas.t || {})) {
+    const [s2, str] = key.split('_').map(Number);
+    if (meas.n[s2]?.[str] == null) continue;
+    const x2 = colX(s2) + CW / 2;
+    const prev = prevNote(mi, s2, str);
+    const x1 = prev && prev.m === mi ? colX(prev.s) + CW / 2 : 2;
+    const y = strY(str) - 6.5;
+    const mid = (x1 + x2) / 2;
+    o += `<path class="slur" d="M${x1 + 3} ${y}Q${mid} ${y - 7} ${x2 - 3} ${y}"/>`;
+    o += `<text class="slurtxt" x="${mid}" y="${y - 5}">${kind === 'h' ? 'H' : 'P'}</text>`;
+  }
+
   // フレットの数字
   for (const [k, col] of Object.entries(meas.n)) {
     const cx = colX(Number(k)) + CW / 2;
@@ -715,7 +771,7 @@ function tabPanel() {
   const frets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 'x'];
   let h = `<div class="pbody">`;
   h += `<div class="sec"><div class="sec-h">選んでいる位置</div><div class="where">${whereText()}</div>
-    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>S</kbd> スタッカート・<kbd>Delete</kbd> 消す・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
+    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>S</kbd> スタッカート・<kbd>H</kbd> ハンマリング・<kbd>P</kbd> プリング・<kbd>Delete</kbd> 消す・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
 
   h += `<div class="sec"><div class="sec-h">フレット</div><div class="keypad">`;
   for (const f of frets) h += `<button type="button" data-fret="${f}">${f === 'x' ? '×' : f}</button>`;
@@ -731,6 +787,14 @@ function tabPanel() {
   h += `<div class="sec"><div class="sec-h">ストロークの矢印</div><div class="seg">`;
   for (const [v, l] of [['D', '↓ ダウン'], ['U', '↑ アップ'], ['', 'なし']]) h += `<button type="button" data-stroke="${v}" aria-pressed="${st === v}">${l}</button>`;
   h += `</div></div>`;
+
+  const lg = body().measures[m].t?.[`${s}_${state.sel.str}`] || '';
+  h += `<div class="sec"><div class="sec-h">ハンマリング・プリング <small>選んでいる音に付ける（<kbd>H</kbd> <kbd>P</kbd>）</small></div><div class="seg">
+    <button type="button" data-legato="h" aria-pressed="${lg === 'h'}">H ハンマリング</button>
+    <button type="button" data-legato="p" aria-pressed="${lg === 'p'}">P プリング</button>
+    <button type="button" data-legato="" aria-pressed="false">外す</button></div>
+    <p class="hint">同じ弦の前の音から、選んでいる音へ弾かずに鳴らします。あとの音を選んで押してください。</p>
+    <p class="hint" id="panel-msg" role="status" hidden></p></div>`;
 
   const stac = !!body().measures[m].sc?.[s];
   h += `<div class="sec"><div class="sec-h">スタッカート <small>この位置の音を短く切る（キーボード <kbd>S</kbd>）</small></div><div class="seg">
@@ -920,7 +984,10 @@ function tick() {
       const vel = dir === 'U' ? 0.68 : dir === 'D' ? 0.82 : 0.9;
       strings.forEach((str, i) => {
         const v = col[str];
-        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x', vel * (dir ? 1 - i * 0.03 : 1));
+        // ハンマリング・プリングは弾かずに鳴らすので、小さく柔らかく
+        const legato = meas.t?.[`${s}_${str}`];
+        audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x',
+          vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008);
       });
       if (meas.sc?.[s]) {
         // スタッカート：次の音までの半分くらいで、鳴っている弦を全部止める
@@ -987,7 +1054,8 @@ function toText() {
         strokeLine += ((meas.st[s] === 'D' ? 'v' : meas.st[s] === 'U' ? '^' : ' ') + (meas.sc?.[s] ? '.' : '')).padEnd(W);
         for (let r = 0; r < 6; r++) {
           const v = meas.n[s]?.[5 - r];
-          const txt = v == null ? '' : String(v);
+          const lg = meas.t?.[`${s}_${5 - r}`];
+          const txt = v == null ? '' : (lg || '') + String(v);
           rows[r] += (txt + '---').slice(0, W);
         }
       }
@@ -1120,6 +1188,7 @@ $('panel-body').addEventListener('click', (e) => {
   else if (d.act === 'more') { state.pick.showAll = !state.pick.showAll; renderPanel(); }
   else if (d.act === 'del-chord') removeChordMark();
   else if (d.act === 'stac') toggleStaccato();
+  else if (d.legato != null) setLegato(d.legato);
   else if (d.act === 'stac-all') { state.rhythm.stac = !state.rhythm.stac; savePrefs(); renderPanel(); }
 });
 $('panel-body').addEventListener('change', (e) => {
@@ -1148,6 +1217,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(0, -1); return; }
   const { m, s, str } = state.sel;
   if (/^[0-9]$/.test(e.key)) { e.preventDefault(); typeDigit(Number(e.key)); return; }
+  if (e.key === 'h' || e.key === 'H') { e.preventDefault(); typing = null; setLegato('h'); return; }
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); typing = null; setLegato('p'); return; }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); typing = null; toggleStaccato(); return; }
   if (e.key === 'x' || e.key === 'X') { e.preventDefault(); typing = null; setFret(m, s, str, 'x'); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {
