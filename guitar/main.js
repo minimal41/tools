@@ -515,9 +515,25 @@ function applyChord() {
 function removeChordMark() {
   const sc = state.selChord;
   if (!sc) return;
+  state.selChord = null; // 先に外す（消したコードを描こうとしないように）
   edit((b) => { delete b.measures[sc.m].c[sc.s]; });
-  state.selChord = null;
-  renderAll();
+}
+
+/** 選んでいる列：コード表示があればそれを、無ければその列の音（矢印・スタッカート・H/P も）を消す */
+function clearColumn() {
+  const { m, s } = state.sel;
+  const meas = body().measures[m];
+  if (meas.c[s]) {
+    edit((b) => { delete b.measures[m].c[s]; });
+    return;
+  }
+  if (!meas.n[s] && !meas.st[s]) return;
+  edit((b) => {
+    const mm = b.measures[m];
+    delete mm.n[s]; delete mm.st[s];
+    if (mm.sc) delete mm.sc[s];
+    if (mm.t) for (const key of Object.keys(mm.t)) if (parseInt(key, 10) === s) delete mm.t[key];
+  });
 }
 
 /** 楽譜のコードをクリックしたら、そのコードを選んだ状態にする */
@@ -770,8 +786,14 @@ function tabPanel() {
   const st = body().measures[m].st[s] || '';
   const frets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 'x'];
   let h = `<div class="pbody">`;
+  if (state.selChord) {
+    const c = body().measures[state.selChord.m].c[state.selChord.s];
+    h += `<div class="selchord">楽譜の <b>${esc(displayName(c))}</b>（${state.selChord.m + 1}小節目）を選んでいます<span class="sp"></span>
+      <button type="button" class="btn danger" data-act="del-chord">コード表示を消す</button></div>
+      <p class="hint">Delete か Backspace でも消せます。</p>`;
+  }
   h += `<div class="sec"><div class="sec-h">選んでいる位置</div><div class="where">${whereText()}</div>
-    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>S</kbd> スタッカート・<kbd>H</kbd> ハンマリング・<kbd>P</kbd> プリング・<kbd>Delete</kbd> 消す・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
+    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>S</kbd> スタッカート・<kbd>H</kbd> ハンマリング・<kbd>P</kbd> プリング・<kbd>Delete</kbd> <kbd>Backspace</kbd> 消す（コードを選んでいるときはコード）・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
 
   h += `<div class="sec"><div class="sec-h">フレット</div><div class="keypad">`;
   for (const f of frets) h += `<button type="button" data-fret="${f}">${f === 'x' ? '×' : f}</button>`;
@@ -831,7 +853,7 @@ function chordPanel() {
   }
 
   h += `<div class="sec"><div class="sec-h">入れる位置</div><div class="where">${whereText()}</div>
-    <p class="hint">楽譜の上をクリックして、コードを始める位置を選びます。</p></div>`;
+    <p class="hint">楽譜の上をクリックして、コードを始める位置を選びます。Delete か Backspace で、選んだ位置のコード（無ければその位置の音）を消せます。</p></div>`;
 
   h += `<div class="sec"><div class="sec-h">コード</div><div class="cname-big">${esc(name)}${sound ? `<small>カポ${b.capo}の実音：${esc(sound)}</small>` : ''}</div>`;
   h += `<div class="roots">`;
@@ -1212,6 +1234,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); if (play.on) stop(); else start(); return; }
   if (e.key === 'ArrowLeft') { e.preventDefault(); moveSel(-1); return; }
   if (e.key === 'ArrowRight') { e.preventDefault(); moveSel(1); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    // 選んでいるコード表示を消す。コード＋リズムでは、選んでいる位置のコード（無ければその列の音）を消す
+    if (state.selChord) { e.preventDefault(); removeChordMark(); return; }
+    if (state.tool === 'chord') { e.preventDefault(); clearColumn(); return; }
+  }
   if (state.tool !== 'tab') return;
   if (e.key === 'ArrowUp') { e.preventDefault(); moveSel(0, 1); return; }
   if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(0, -1); return; }
