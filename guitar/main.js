@@ -573,12 +573,30 @@ function tooTightForFour(meas) {
   return false;
 }
 
-/** 印刷用：4小節ずつ並べ、入り切らない小節がある行は2小節にする（2小節の行は画面と同じ太さのマス） */
+/**
+ * 印刷で1行に4小節にしたとき、小節の右端からはみ出して描かれるもの（コード名・図・記号など）があるか。
+ * いったん細いマスで描いて、実際に描かれた範囲を測る
+ */
+function overflowsRight(ms) {
+  const box = $('score');
+  [CW, PADL, PADR] = PRINT_LAYOUT;
+  box.innerHTML = ms.map((_, i) => measureSvg(i, 'quarter')).join('');
+  const W = PADL + S() * CW + PADR;
+  return [...box.querySelectorAll('svg.measure')].map((svg) => {
+    try {
+      const bb = svg.getBBox();
+      return bb.x + bb.width > W + 0.5;
+    } catch { return false; }
+  });
+}
+
+/** 印刷用：4小節ずつ並べ、入り切らない・右端が切れる小節がある行は2小節にする（2小節の行は画面と同じ太さのマス） */
 function printScoreHtml(ms) {
+  const over = overflowsRight(ms);
   let html = '';
   for (let i = 0; i < ms.length;) {
     const four = ms.slice(i, i + 4);
-    const two = four.some(tooTightForFour);
+    const two = four.some((meas, k) => over[i + k] || tooTightForFour(meas));
     const count = two ? Math.min(2, ms.length - i) : Math.min(4, ms.length - i);
     [CW, PADL, PADR] = two ? SCREEN_LAYOUT : PRINT_LAYOUT;
     for (let k = 0; k < count; k++) html += measureSvg(i + k, two ? 'half' : 'quarter');
