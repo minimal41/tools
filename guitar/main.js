@@ -51,7 +51,7 @@ const body = () => song()?.body;
 const meter = () => METERS[body()?.meter] || METERS['4/4'];
 const S = () => meter().steps;
 
-function emptyMeasure() { return { n: {}, st: {}, c: {} }; }
+function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {} }; }
 function newBody(opts = {}) {
   return {
     capo: Number(opts.capo) || 0, meter: METERS[opts.meter] ? opts.meter : '4/4',
@@ -94,7 +94,7 @@ function normalizeBody(b) {
   const out = newBody(b || {});
   out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
   if (Array.isArray(b?.measures) && b.measures.length) {
-    out.measures = b.measures.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {} }));
+    out.measures = b.measures.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {} }));
   }
   return out;
 }
@@ -307,7 +307,17 @@ function setFret(m, s, str, v) {
     const meas = b.measures[m];
     const col = meas.n[s] ? meas.n[s].slice() : [null, null, null, null, null, null];
     col[str] = v;
-    if (col.every((x) => x == null)) { delete meas.n[s]; delete meas.st[s]; } else meas.n[s] = col;
+    if (col.every((x) => x == null)) { delete meas.n[s]; delete meas.st[s]; delete meas.sc?.[s]; } else meas.n[s] = col;
+  });
+}
+
+/** スタッカート（その列の音を短く切る）を付けたり外したりする */
+function toggleStaccato() {
+  const { m, s } = state.sel;
+  edit((b) => {
+    const meas = b.measures[m];
+    meas.sc ||= {};
+    if (meas.sc[s]) delete meas.sc[s]; else meas.sc[s] = 1;
   });
 }
 
@@ -425,7 +435,7 @@ function applyChord() {
       const s = g % n;
       if (g > start) delete meas.c[s];
       if (pat.kind === 'none') continue;
-      delete meas.n[s]; delete meas.st[s];
+      delete meas.n[s]; delete meas.st[s]; if (meas.sc) delete meas.sc[s];
       let tok = null;
       if (pat.kind === 'stroke') {
         if (s % pat.res === 0) tok = pat.tokens[(s / pat.res) % pat.tokens.length];
@@ -446,7 +456,10 @@ function applyChord() {
       } else {
         for (const str of resolveArp(tok, frets)) col[str] = frets[str];
       }
-      if (col.some((x) => x != null)) meas.n[s] = col;
+      if (col.some((x) => x != null)) {
+        meas.n[s] = col;
+        if (state.rhythm.stac) (meas.sc ||= {})[s] = 1;
+      }
     }
     const first = b.measures[Math.floor(start / n)];
     first.c[start % n] = { r: state.pick.root, q: state.pick.q, b: state.pick.bass, f: frets.slice() };
@@ -505,7 +518,7 @@ function changeMeter(next) {
     bb.meter = next;
     const n = METERS[next].steps;
     for (const meas of bb.measures) {
-      for (const k of ['n', 'st', 'c']) for (const s of Object.keys(meas[k])) if (Number(s) >= n) delete meas[k][s];
+      for (const k of ['n', 'st', 'c', 'sc']) for (const s of Object.keys(meas[k])) if (Number(s) >= n) delete meas[k][s];
     }
   });
   clampSel();
@@ -617,6 +630,11 @@ function measureSvg(mi) {
     }
   }
 
+  // スタッカートの点（TAB の下）
+  for (const k of Object.keys(meas.sc || {})) {
+    o += `<circle class="stac" cx="${colX(Number(k)) + CW / 2}" cy="${strY(0) + 6.5}" r="2"/>`;
+  }
+
   // フレットの数字
   for (const [k, col] of Object.entries(meas.n)) {
     const cx = colX(Number(k)) + CW / 2;
@@ -697,7 +715,7 @@ function tabPanel() {
   const frets = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 'x'];
   let h = `<div class="pbody">`;
   h += `<div class="sec"><div class="sec-h">選んでいる位置</div><div class="where">${whereText()}</div>
-    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>Delete</kbd> 消す・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
+    <p class="hint">楽譜のマスをクリックして選びます。キーボード：<kbd>0</kbd>〜<kbd>9</kbd>（続けて打つと2桁）・<kbd>X</kbd> ミュート・<kbd>S</kbd> スタッカート・<kbd>Delete</kbd> 消す・<kbd>←</kbd><kbd>→</kbd> 前後・<kbd>↑</kbd><kbd>↓</kbd> 弦・<kbd>Space</kbd> 再生</p></div>`;
 
   h += `<div class="sec"><div class="sec-h">フレット</div><div class="keypad">`;
   for (const f of frets) h += `<button type="button" data-fret="${f}">${f === 'x' ? '×' : f}</button>`;
@@ -713,6 +731,10 @@ function tabPanel() {
   h += `<div class="sec"><div class="sec-h">ストロークの矢印</div><div class="seg">`;
   for (const [v, l] of [['D', '↓ ダウン'], ['U', '↑ アップ'], ['', 'なし']]) h += `<button type="button" data-stroke="${v}" aria-pressed="${st === v}">${l}</button>`;
   h += `</div></div>`;
+
+  const stac = !!body().measures[m].sc?.[s];
+  h += `<div class="sec"><div class="sec-h">スタッカート <small>この位置の音を短く切る（キーボード <kbd>S</kbd>）</small></div><div class="seg">
+    <button type="button" data-act="stac" aria-pressed="${stac}">・ スタッカート${stac ? '（付いています）' : ''}</button></div></div>`;
 
   // コードの音から入れる（アルペジオを1音ずつ打つとき）
   const at = chordAt(m, s);
@@ -787,6 +809,11 @@ function chordPanel() {
     if (r.kind === 'arp') h += `<p class="hint">アルペジオは、選んだ押さえ方のフレットをそのまま使います。B はベース（いちばん低い弦）、N はその1本上の弦です。</p>`;
   }
   h += `</div>`;
+
+  if (r.kind !== 'none') {
+    h += `<div class="sec"><div class="sec-h">弾き方</div><div class="seg">
+      <button type="button" data-act="stac-all" aria-pressed="${!!r.stac}">・ スタッカートで弾く（音を短く切る）</button></div></div>`;
+  }
 
   const mt = meter();
   h += `<div class="sec"><div class="sec-h">長さ</div><div class="seg">`;
@@ -895,6 +922,16 @@ function tick() {
         const v = col[str];
         audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, b.capo), play.next + i * gap, v === 'x', vel * (dir ? 1 - i * 0.03 : 1));
       });
+      if (meas.sc?.[s]) {
+        // スタッカート：次の音までの半分くらいで、鳴っている弦を全部止める
+        let k = 1;
+        while (k < 4) {
+          const g2 = play.g + k;
+          if (b.measures[Math.floor(g2 / n)]?.n[g2 % n]) break;
+          k++;
+        }
+        audio.damp(play.next + strings.length * gap + Math.max(0.07, k * dt * 0.5));
+      }
     }
     play.queue.push({ t: play.next, g: play.g });
     play.g++;
@@ -947,7 +984,7 @@ function toText() {
           [...name].forEach((ch, k) => { if (at + k < cl.length) cl[at + k] = ch; });
           free = at + name.length + 1;
         }
-        strokeLine += (meas.st[s] === 'D' ? 'v' : meas.st[s] === 'U' ? '^' : ' ').padEnd(W);
+        strokeLine += ((meas.st[s] === 'D' ? 'v' : meas.st[s] === 'U' ? '^' : ' ') + (meas.sc?.[s] ? '.' : '')).padEnd(W);
         for (let r = 0; r < 6; r++) {
           const v = meas.n[s]?.[5 - r];
           const txt = v == null ? '' : String(v);
@@ -1082,6 +1119,8 @@ $('panel-body').addEventListener('click', (e) => {
   } else if (d.act === 'apply') applyChord();
   else if (d.act === 'more') { state.pick.showAll = !state.pick.showAll; renderPanel(); }
   else if (d.act === 'del-chord') removeChordMark();
+  else if (d.act === 'stac') toggleStaccato();
+  else if (d.act === 'stac-all') { state.rhythm.stac = !state.rhythm.stac; savePrefs(); renderPanel(); }
 });
 $('panel-body').addEventListener('change', (e) => {
   const t = e.target;
@@ -1109,6 +1148,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(0, -1); return; }
   const { m, s, str } = state.sel;
   if (/^[0-9]$/.test(e.key)) { e.preventDefault(); typeDigit(Number(e.key)); return; }
+  if (e.key === 's' || e.key === 'S') { e.preventDefault(); typing = null; toggleStaccato(); return; }
   if (e.key === 'x' || e.key === 'X') { e.preventDefault(); typing = null; setFret(m, s, str, 'x'); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault(); typing = null;

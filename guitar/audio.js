@@ -204,6 +204,15 @@ export function prepare(keys) {
   }
 }
 
+/** when の時点で、鳴っている弦をすべて止める（スタッカート） */
+export function damp(when) {
+  ensure();
+  ringing.forEach((r) => {
+    if (!r) return;
+    try { r.g.gain.setTargetAtTime(0, when, 0.018); } catch { /* 無視 */ }
+  });
+}
+
 export function now() { return ensure().currentTime; }
 
 export function stopAll() {
