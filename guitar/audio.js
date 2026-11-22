@@ -38,8 +38,8 @@ function build() {
 
   // 部屋の残響
   const room = ctx.createConvolver();
-  room.buffer = roomImpulse(1.2);
-  const wet = ctx.createGain(); wet.gain.value = 0.16;
+  room.buffer = roomImpulse(1.45);
+  const wet = ctx.createGain(); wet.gain.value = 0.19;
   const dry = ctx.createGain(); dry.gain.value = 1;
 
   const comp = ctx.createDynamicsCompressor();
@@ -144,11 +144,11 @@ function pluckBuffer(midi, muted) {
   if (buffers.has(key)) return buffers.get(key);
   const sr = ctx.sampleRate;
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
-  const sec = muted ? 0.09 : 3.5;
+  const sec = muted ? 0.09 : 4.3;
   const len = Math.floor(sr * sec);
   const buf = ctx.createBuffer(2, len, sr);
   // 低い弦ほど長く響く。高い音ほど明るさを少し抑える
-  const t60 = muted ? 0.05 : Math.min(4.5, Math.max(2, 4.5 - (midi - 40) * 0.06));
+  const t60 = muted ? 0.05 : Math.min(6, Math.max(2.7, 6 - (midi - 40) * 0.08));
   const bright = muted ? 0.2 : Math.min(0.72, 0.4 + (76 - midi) * 0.007); // 低めにして出だしの硬さを抑える
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
