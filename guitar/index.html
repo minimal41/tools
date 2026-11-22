@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Kaku+Gothic+Antique:wght@700;900&display=swap">
 <style>
-/* Layout: 左に楽譜、右に入力パネル（追従）。狭い画面ではパネルを画面の下に固定する。 */
+/* 曲の一覧：保存されている曲をカードで並べ、押すと曲ごとのページ（edit.html?id=…）を開く */
 :root {
   --bg: #f4f2ee;
   --panel: #ffffff;
@@ -16,10 +16,8 @@
   --ink: #22201c;
   --muted: #6f6a62;
   --line: #ddd8cf;
-  --staff: #8d877d;
   --accent: #b5532a;
   --accent-soft: #f6e6dc;
-  --sel: rgba(181, 83, 42, .16);
   --danger: #b23b3b;
   --font-display: "Zen Kaku Gothic Antique", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
   --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
@@ -28,14 +26,12 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #161513; --panel: #1f1d1a; --paper: #1b1a17; --ink: #ece7de; --muted: #a29b90; --line: #34312c;
-    --staff: #7a746a; --accent: #e8875a; --accent-soft: #3a2a21; --sel: rgba(232, 135, 90, .2); --danger: #e07272;
-    color-scheme: dark;
+    --accent: #e8875a; --accent-soft: #3a2a21; --danger: #e07272; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #161513; --panel: #1f1d1a; --paper: #1b1a17; --ink: #ece7de; --muted: #a29b90; --line: #34312c;
-  --staff: #7a746a; --accent: #e8875a; --accent-soft: #3a2a21; --sel: rgba(232, 135, 90, .2); --danger: #e07272;
-  color-scheme: dark;
+  --accent: #e8875a; --accent-soft: #3a2a21; --danger: #e07272; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -44,269 +40,92 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 button, select, input { font: inherit; color: inherit; }
-.wrap { max-width: 1280px; margin: 0 auto; padding-block: 22px 40px; display: flex; flex-direction: column; gap: 14px; }
+.wrap { max-width: 960px; margin: 0 auto; padding-block: 22px 48px; display: flex; flex-direction: column; gap: 16px; }
 .home { font-size: .8rem; color: var(--muted); text-decoration: none; }
 .home:hover { color: var(--ink); }
 header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 h1 { font-family: var(--font-display); font-weight: 900; font-size: 1.6rem; margin: 0; letter-spacing: .02em; }
+.lead { margin: 4px 0 0; color: var(--muted); font-size: .85rem; }
 .acct { font-size: 12px; color: var(--muted); }
 .status { font-size: .78rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .status[data-s="saved"] .dot { background: #3f8f5a; }
-.status[data-s="saving"] .dot { background: #d9a43a; }
 .status[data-s="error"] .dot { background: var(--danger); }
 .note { font-size: .78rem; color: var(--muted); margin: 0; }
 .note a { color: var(--accent); }
 
-/* ---- 曲のバー ---- */
-.songbar {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
-  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end;
-}
-.field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.field > span { font-size: .7rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
-.field input, .field select, select.in, input.in {
-  border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 8px; min-width: 0;
-}
-.field.title { flex: 1 1 200px; }
-.field.title input { font-weight: 700; font-size: 1rem; }
-.field.song { flex: 0 1 200px; }
-.field.small select, .field.small input { width: 84px; }
-.field.small #namemode { width: 104px; }
-.tools { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.bar .search { flex: 1 1 200px; min-width: 0; }
+.in { border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 8px 10px; min-width: 0; width: 100%; }
+select.in { width: auto; min-width: 10.5em; }
 .btn {
-  border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 12px; cursor: pointer;
-  white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--ink);
 }
 .btn:hover { border-color: var(--ink); }
-.btn:disabled { opacity: .45; cursor: default; border-color: var(--line); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .btn.primary:hover { filter: brightness(1.06); }
+.btn.small { padding: 4px 10px; font-size: .8rem; }
 .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
-.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
-button:focus-visible, select:focus-visible, input:focus-visible, .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ---- 本体 ---- */
-.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px 24px; min-width: 0; }
-.sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.sheet-title { font-family: var(--font-display); font-weight: 900; font-size: 1.25rem; margin: 0; overflow-wrap: anywhere; }
-.sheet-meta { font-size: .82rem; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
-.sheet-meta b { color: var(--ink); }
-.score { display: flex; flex-wrap: wrap; row-gap: 6px; }
-.score svg.measure { display: block; margin-right: -1px; max-width: 100%; height: auto; overflow: visible; user-select: none; -webkit-user-select: none; }
-.measure .staff { stroke: var(--staff); stroke-width: 1; }
-.measure .bar { stroke: var(--ink); stroke-width: 1.2; }
-.measure .beatline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
-.measure .num { fill: var(--muted); font-size: 10px; font-family: var(--font-num); }
-.measure .beat { fill: var(--muted); font-size: 9px; font-family: var(--font-num); text-anchor: middle; }
-.measure .fret { fill: var(--ink); font-size: 12px; font-family: var(--font-num); font-weight: 700; text-anchor: middle; dominant-baseline: central; }
-.measure .fretbg { fill: var(--paper); }
-.measure .cell { fill: transparent; cursor: pointer; }
-.measure .cell:hover { fill: var(--sel); }
-.measure .col { fill: transparent; cursor: pointer; }
-.measure .col:hover { fill: rgba(127, 127, 127, .06); }
-.measure .selcell { fill: none; stroke: var(--accent); stroke-width: 1.6; }
-.measure .selcol { fill: var(--sel); }
-.measure .ph { fill: var(--accent); opacity: .18; }
-.measure .arrow { stroke: var(--ink); stroke-width: 1.3; fill: none; }
-.measure .arrowhead { fill: var(--ink); }
-.measure .mutex { stroke: var(--ink); stroke-width: 1.1; }
-.measure .stac { fill: var(--ink); }
-.measure .slur { fill: none; stroke: var(--ink); stroke-width: 1; }
-.measure .slide { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; }
-.measure .slurtxt { fill: var(--ink); font-size: 7.5px; font-weight: 700; text-anchor: middle; font-family: var(--font-num); }
-.measure .bassmark { fill: var(--muted); font-size: 9px; text-anchor: middle; font-family: var(--font-num); }
-.chordmark { cursor: pointer; }
-.chordmark .cname { fill: var(--ink); font-size: 12px; font-weight: 700; font-family: var(--font-body); }
-.chordmark:hover .cname { fill: var(--accent); }
-.chordmark.selected .cname { fill: var(--accent); }
-.chordmark.selected .hit { fill: var(--sel); }
-.chordmark .hit { fill: transparent; }
-.dg .s, .dg .f { stroke: var(--staff); stroke-width: .8; }
-.dg .nut { stroke: var(--ink); stroke-width: 2.4; }
-.dg .fd { fill: var(--ink); }
-.dg .open { fill: none; stroke: var(--ink); stroke-width: .9; }
-.dg .mute { stroke: var(--ink); stroke-width: .9; }
-.dg .pos { fill: var(--muted); font-size: 7.5px; font-family: var(--font-num); }
-.add-measure { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
-
-/* ---- パネル ---- */
-/* 再生・取り消しのバー：スクロールしても画面の上に残る */
-.playbar {
-  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
-  margin-inline: -4px; padding: 8px 4px; background: color-mix(in srgb, var(--bg) 92%, transparent);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
-}
-.playbar .btn { padding: 6px 12px; }
-.playbar #play { min-width: 92px; justify-content: center; }
-.playbar { overflow-x: auto; scrollbar-width: thin; }
-.pb-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 4px; flex: none; }
-.parts { display: flex; gap: 4px; flex: none; }
-.parts .btn { max-width: 160px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
-.parts .btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 700; }
-.playbar .btn { flex: none; }
-#play-all[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.panel {
-  position: sticky; top: 62px; max-height: calc(100vh - 74px); overflow: auto;
+.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column;
+  min-width: 0; transition: border-color .15s, box-shadow .15s;
 }
-.tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
-.tabs button { border: 0; background: none; padding: 11px 6px; cursor: pointer; font-weight: 700; color: var(--muted); border-bottom: 2px solid transparent; }
-.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
-.pbody { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-.sec { display: flex; flex-direction: column; gap: 7px; }
-.sec-h { font-size: .72rem; letter-spacing: .1em; color: var(--muted); font-weight: 700; display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
-.sec-h small { letter-spacing: 0; font-weight: 400; }
-.where { font-size: .85rem; background: var(--bg); border-radius: 8px; padding: 7px 10px; }
-.where b { color: var(--accent); }
-.keypad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
-.keypad button, .seg button {
-  border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 7px 0; cursor: pointer; font-family: var(--font-num); font-weight: 700;
-}
-.keypad button:hover, .seg button:hover { border-color: var(--ink); }
-.keypad .wide { grid-column: span 2; font-family: var(--font-body); font-weight: 500; }
-.seg { display: flex; gap: 5px; flex-wrap: wrap; }
-.seg button { padding: 6px 10px; font-family: var(--font-body); font-weight: 500; }
-.seg button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
-.hint { font-size: .74rem; color: var(--muted); margin: 0; }
-.hint kbd { font-family: var(--font-num); font-size: .7rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--paper); }
-.chordnotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.chordnotes button { border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 4px; cursor: pointer; font-size: .8rem; }
-.chordnotes button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.chordnotes button:disabled { opacity: .4; cursor: default; }
-.chordnotes b { font-family: var(--font-num); }
-.roots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
-.roots button { border: 1px solid var(--line); background: var(--paper); border-radius: 7px; padding: 6px 0; cursor: pointer; font-weight: 700; font-size: .86rem; }
-.roots button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.cname-big { font-family: var(--font-display); font-weight: 900; font-size: 1.5rem; line-height: 1.2; }
-.cname-big small { font-family: var(--font-body); font-weight: 500; font-size: .78rem; color: var(--muted); margin-left: 8px; }
-.voicings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.voicings button { border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 4px 2px 2px; cursor: pointer; color: var(--ink); }
-.voicings button:hover { border-color: var(--ink); }
-.voicings button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
-.voicings svg { width: 100%; height: auto; display: block; }
-.voicings .vf { display: block; font-family: var(--font-num); font-size: .62rem; color: var(--muted); text-align: center; letter-spacing: -.02em; }
-.patterns { display: flex; flex-direction: column; gap: 4px; }
-.patterns label { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-.patterns label:hover { background: var(--bg); }
-.patterns label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.patterns input { accent-color: var(--accent); margin: 0; flex: none; }
-.patterns .pn { font-weight: 700; white-space: nowrap; }
-.patterns .ph2 { font-size: .74rem; color: var(--muted); overflow-wrap: anywhere; }
-.custom { display: flex; flex-direction: column; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
-.custom .crow { display: flex; gap: 1px; align-items: center; }
-.custom .clab { width: 40px; flex: none; font-size: .68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.custom .cc {
-  width: 15px; height: 22px; flex: none; border: 1px solid var(--line); background: var(--paper); border-radius: 3px; padding: 0; cursor: pointer;
-  font-size: .68rem; line-height: 1; display: grid; place-items: center;
-}
-.custom .cc.beat { border-left: 2px solid var(--staff); }
-.custom .cc.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.custom .cc:disabled { opacity: .35; cursor: default; }
-.apply { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
-.apply .btn.primary { justify-content: center; padding: 9px 12px; }
-.selchord { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: .82rem; background: var(--accent-soft); border-radius: 8px; padding: 6px 8px; }
-.selchord b { color: var(--accent); }
-.selchord .sp { flex: 1; }
+.card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, .06); }
+.card a.open { color: inherit; text-decoration: none; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.card .t { font-family: var(--font-display); font-weight: 700; font-size: 1.08rem; overflow-wrap: anywhere; }
+.card a.open:hover .t { color: var(--accent); }
+.card .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .76rem; color: var(--muted); }
+.card .meta b { color: var(--ink); font-weight: 700; }
+.card .chords { font-family: var(--font-num); font-size: .78rem; color: var(--ink); background: var(--bg); border-radius: 6px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .chords.none { color: var(--muted); font-family: var(--font-body); }
+.card .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 8px 12px 8px 16px; }
+.card .when { font-size: .72rem; color: var(--muted); }
+.card .acts { display: flex; gap: 4px; }
+.empty { background: var(--panel); border: 1px dashed var(--line); border-radius: 12px; padding: 40px 16px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); font-size: 1.05rem; margin-bottom: 6px; }
+.empty .btn { margin-top: 14px; }
 
 dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px; width: min(440px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(0, 0, 0, .35); }
 dialog h2 { font-family: var(--font-display); font-size: 1.15rem; margin: 0 0 12px; }
 dialog form { display: flex; flex-direction: column; gap: 10px; }
-dialog .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); font-size: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--paper); color: var(--ink); white-space: pre; }
-.empty { color: var(--muted); text-align: center; padding: 40px 12px; }
-
-@media (max-width: 900px) {
-  .main { grid-template-columns: minmax(0, 1fr); }
-  .panel { position: sticky; top: auto; bottom: 0; max-height: 46vh; border-radius: 12px 12px 0 0; box-shadow: 0 -6px 20px rgba(0, 0, 0, .12); }
-  .tools { margin-left: 0; }
-}
-@media (max-width: 520px) {
-  .playbar .btn { padding: 6px 9px; }
-  .playbar .lbl { display: none; }
-  .playbar { flex-wrap: wrap; overflow-x: visible; }
-  .pb-sep { display: none; }
-  .parts { flex-wrap: wrap; }
-  .field.small select, .field.small input { width: 70px; }
-  .sheet { padding: 12px 8px 18px; }
-}
-
-@media print {
-  :root, :root[data-theme="dark"] { --paper: #fff; --ink: #000; --staff: #666; --line: #ccc; --muted: #555; color-scheme: light; }
-  body { background: #fff; padding: 0; }
-  .home, header.top, .playbar, .note, .songbar, .panel, .add-measure, .measure .selcell, .measure .selcol, .measure .ph { display: none !important; }
-  .main { display: block; }
-  .sheet { border: 0; padding: 0; }
-  @page { size: A4 portrait; margin: 12mm; }
-  /* 1行に4小節（main.js が印刷用に細いマスで描き直す） */
-  .score svg.measure { break-inside: avoid; width: calc(25% + 1px) !important; height: auto !important; }
-}
+.field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.field > span { font-size: .7rem; color: var(--muted); letter-spacing: .06em; font-weight: 700; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid3 .in { width: 100%; }
+.hint { font-size: .74rem; color: var(--muted); margin: 0; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <a class="home" href="../index.html">← Tools</a>
   <header class="top">
-    <h1>ギター譜</h1>
-    <div class="acct" data-tools-account="name"></div>
+    <div>
+      <h1>ギター譜</h1>
+      <p class="lead">TAB 譜を打ったり、コードとリズムを選んで押さえ方つきの譜面を作れます。</p>
+    </div>
+    <div class="acct" data-tools-account></div>
     <div class="status" id="status" data-s="idle"><span class="dot"></span><span id="status-text">読み込み中…</span></div>
   </header>
   <p class="note" id="where" hidden></p>
 
-  <section class="songbar" aria-label="曲の設定">
-    <label class="field song"><span>曲</span><select id="song-select"></select></label>
-    <label class="field title"><span>タイトル</span><input id="title" type="text" maxlength="80"></label>
-    <label class="field small"><span id="capo-label">カポ</span><select id="capo"></select></label>
-    <label class="field small"><span>拍子</span>
-      <select id="meter"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>
-    </label>
-    <label class="field small"><span>テンポ ♩=</span><input id="tempo" type="number" min="30" max="300" step="1"></label>
-    <label class="field small"><span>コード名</span>
-      <select id="namemode"><option value="shape">押さえ方</option><option value="sound">実音</option></select>
-    </label>
-    <div class="tools">
-      <button class="btn" id="new-song" type="button">＋ 新しい曲</button>
-      <button class="btn" id="text-out" type="button">テキスト</button>
-      <button class="btn" id="print" type="button">印刷・PDF</button>
-      <button class="btn danger" id="delete-song" type="button">削除</button>
-    </div>
-  </section>
-
-  <div class="playbar" role="toolbar" aria-label="再生と取り消し">
-    <button class="btn primary" id="play" type="button">▶ 再生</button>
-    <button class="btn" id="undo" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶<span class="lbl"> 戻す</span></button>
-    <button class="btn" id="redo" type="button" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷<span class="lbl"> やり直す</span></button>
-    <span class="pb-sep" aria-hidden="true"></span>
-    <div class="parts" id="parts" role="group" aria-label="パート"></div>
-    <button class="btn" id="play-all" type="button" aria-pressed="true" title="再生で全部のパートを一緒に鳴らすか、表示中のパートだけ鳴らすか">♪ 全パート</button>
+  <div class="bar">
+    <button class="btn primary" id="new-song" type="button">＋ 新しい曲</button>
+    <input class="in search" id="search" type="search" placeholder="曲名で探す" aria-label="曲名で探す">
+    <select class="in" id="sort" aria-label="並び順">
+      <option value="updated">更新が新しい順</option>
+      <option value="created">作った順</option>
+      <option value="title">曲名順</option>
+    </select>
   </div>
 
-  <div class="main">
-    <section class="sheet" aria-label="楽譜">
-      <div class="sheet-head">
-        <h2 class="sheet-title" id="sheet-title"></h2>
-        <div class="sheet-meta" id="sheet-meta"></div>
-      </div>
-      <div class="score" id="score"><div class="empty">読み込み中…</div></div>
-      <div class="add-measure">
-        <button class="btn" id="add-measure" type="button">＋ 小節を足す</button>
-        <button class="btn" id="insert-measure" type="button">選択した小節の前に入れる</button>
-        <button class="btn danger" id="remove-measure" type="button">選択した小節を消す</button>
-      </div>
-    </section>
-
-    <aside class="panel" id="panel" aria-label="入力">
-      <div class="tabs" role="tablist">
-        <button type="button" role="tab" id="tab-tab" aria-selected="true">TAB を打つ</button>
-        <button type="button" role="tab" id="tab-chord" aria-selected="false">コード＋リズム</button>
-      </div>
-      <div id="panel-body"></div>
-    </aside>
-  </div>
+  <ul class="list" id="list" aria-label="保存されている曲"></ul>
+  <div class="empty" id="empty" hidden></div>
 </div>
 
 <dialog id="new-dialog">
@@ -323,42 +142,12 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
     <p class="hint">カポの位置はあとからでも変えられます。TAB の数字はカポからのフレット数（カポ = 0）で書きます。</p>
     <div class="actions">
       <button class="btn" value="cancel" formnovalidate type="submit">やめる</button>
-      <button class="btn primary" value="ok" type="submit">作る</button>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="part-dialog">
-  <h2>パートの設定</h2>
-  <form method="dialog" id="part-form">
-    <label class="field"><span>パートの名前</span><input class="in" name="name" type="text" maxlength="30"></label>
-    <label class="field"><span>このパートのカポ</span><select class="in" name="capo" id="part-capo"></select></label>
-    <p class="hint">パートごとに小節とカポを持ちます。拍子とテンポは曲全体で共通です。</p>
-    <div class="actions" style="justify-content: space-between; flex-wrap: wrap;">
-      <span style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn" type="button" id="part-copy">このパートを複製</button>
-        <button class="btn danger" type="button" id="part-delete">このパートを削除</button>
-      </span>
-      <span style="display:flex; gap:8px;">
-        <button class="btn" value="cancel" formnovalidate type="submit">やめる</button>
-        <button class="btn primary" value="ok" type="submit">決定</button>
-      </span>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="text-dialog">
-  <h2>テキストの TAB 譜</h2>
-  <form method="dialog">
-    <textarea id="text-area" readonly></textarea>
-    <div class="actions">
-      <button class="btn" id="copy-text" type="button">コピー</button>
-      <button class="btn primary" value="close" type="submit">閉じる</button>
+      <button class="btn primary" value="ok" type="submit">作って開く</button>
     </div>
   </form>
 </dialog>
 
 <script type="module" src="../shared/account-badge.js"></script>
-<script type="module" src="main.js"></script>
+<script type="module" src="list.js"></script>
 </body>
 </html>

@@ -441,6 +441,11 @@ export const guitarTabs = {
     const snap = await getDocs(guitarCol());
     return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
   },
+  /** 1曲だけ（無ければ null） */
+  async get(id) {
+    const snap = await getDoc(doc(guitarCol(), id));
+    return snap.exists() ? { ...snap.data(), id: snap.id } : null;
+  },
   async put(song) {
     const { id, ...data } = song;
     await setDoc(doc(guitarCol(), id), data);

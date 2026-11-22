@@ -4,8 +4,9 @@
  * TAB を1音ずつ打つ「TAB を打つ」と、コード・押さえ方・リズムを選んで流し込む「コード＋リズム」の2つの入力。
  * 流し込んだところには、TAB の上にコードの押さえ方（ダイアグラム）を表示する。
  *
+ * このページは1曲ずつ開く（edit.html?id=曲のID）。曲の一覧は index.html。
  * 保存：ログイン中 … アカウント（Firestore の users/{uid}/guitarTabs）
- *       未ログイン … このブラウザ（localStorage）
+ *       未ログイン … このブラウザ（localStorage）。読み書きは songs.js
  *
  * 曲のデータ（body）
  *   { meter, tempo, nameMode, parts: [ { name, capo, measures } ] }（パートごとに小節とカポを持つ。拍子とテンポは共通）
@@ -16,12 +17,11 @@ import * as account from '../shared/account.js';
 import { QUALITIES, ROOTS, ROOT_LABELS, chordName, voicings, diagramInfo, midiOf } from './chords.js';
 import { STROKES, ARPEGGIOS, resolveArp, strokeGlyph } from './patterns.js';
 import * as audio from './audio.js';
+import { esc, emptyMeasure, newPart, clampTempo, getSong, putSong, removeSong, describeWhere } from './songs.js';
 
-const LOCAL_KEY = 'tools.guitarTabs';
 const PREFS_KEY = 'tools.guitarTabs.prefs';
 const $ = (id) => document.getElementById(id);
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const SONG_ID = new URLSearchParams(location.search).get('id');
 
 const METERS = {
   '4/4': { steps: 16, beat: 4, label: (s) => s / 4 + 1 },
@@ -57,19 +57,6 @@ const pt = () => P(body());
 const meter = () => METERS[body()?.meter] || METERS['4/4'];
 const S = () => meter().steps;
 
-function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {} }; }
-function newPart(name, capo = 0, count = 4) {
-  return { name, capo: Number(capo) || 0, measures: Array.from({ length: count }, emptyMeasure) };
-}
-function newBody(opts = {}) {
-  return {
-    meter: METERS[opts.meter] ? opts.meter : '4/4',
-    tempo: clampTempo(opts.tempo ?? 90), nameMode: 'shape',
-    parts: [newPart('パート1', opts.capo)],
-  };
-}
-function clampTempo(v) { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(300, Math.max(30, v)) : 90; }
-
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
@@ -90,86 +77,39 @@ function setStatus(s, text) { $('status').dataset.s = s; $('status-text').textCo
 
 /* ---------- 保存 ---------- */
 
-function readLocal() {
-  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); } catch { return []; }
-}
-function writeLocal() {
-  try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(state.order.map((id) => ({ id, ...state.songs[id] }))));
-    return true;
-  } catch { return false; }
-}
-
-function normalizeBody(b) {
-  const out = newBody(b || {});
-  out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
-  const fixMeasures = (ms) => (Array.isArray(ms) && ms.length
-    ? ms.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {} }))
-    : Array.from({ length: 4 }, emptyMeasure));
-  if (Array.isArray(b?.parts) && b.parts.length) {
-    out.parts = b.parts.map((pp, i) => ({ name: pp?.name || `パート${i + 1}`, capo: Number(pp?.capo) || 0, measures: fixMeasures(pp?.measures) }));
-  } else {
-    // パートが無かったころの曲は、1つ目のパートにする
-    out.parts = [{ name: 'パート1', capo: Number(b?.capo) || 0, measures: fixMeasures(b?.measures) }];
-  }
-  return out;
-}
-
 async function load(user) {
   state.ready = false;
   state.mode = user ? 'account' : 'local';
-  let rows = [];
-  if (user) {
-    setStatus('idle', '読み込み中…');
-    try {
-      rows = (await account.guitarTabs.list()).map((r) => {
-        let b = null;
-        try { b = JSON.parse(r.data || 'null'); } catch { /* 壊れていたら空にする */ }
-        return { id: r.id, title: r.title, position: r.position, createdAt: r.createdAt, updatedAt: r.updatedAt, body: b };
-      });
-    } catch (e) {
-      setStatus('error', '読み込めませんでした');
-      $('score').innerHTML = `<div class="empty">曲を読み込めませんでした。${esc(e.message || 'ページを開き直してください。')}</div>`;
-      return;
-    }
-  } else {
-    rows = readLocal();
+  describeWhere($('where'), state.mode, '../index.html');
+  if (!SONG_ID) { location.replace('index.html'); return; }
+  setStatus('idle', '読み込み中…');
+  let sg;
+  try {
+    sg = await getSong(state.mode, SONG_ID);
+  } catch (e) {
+    setStatus('error', '読み込めませんでした');
+    $('score').innerHTML = `<div class="empty">曲を読み込めませんでした。${esc(e.message || 'ページを開き直してください。')}</div>`;
+    return;
   }
-  const pos = (r) => (typeof r.position === 'number' ? r.position : Infinity);
-  rows.sort((a, b) => pos(a) - pos(b) || (a.createdAt || 0) - (b.createdAt || 0));
-  state.songs = {}; state.order = [];
-  for (const r of rows) {
-    state.songs[r.id] = {
-      title: r.title || '無題', position: r.position ?? state.order.length,
-      createdAt: r.createdAt || Date.now(), updatedAt: r.updatedAt || Date.now(), body: normalizeBody(r.body),
-    };
-    state.order.push(r.id);
+  if (!sg) {
+    setStatus('error', '曲が見つかりません');
+    $('score').innerHTML = `<div class="empty">この曲は見つかりませんでした。削除されたか、${user ? 'このアカウント' : 'このブラウザ'}には保存されていない曲です。<br><a href="index.html">曲の一覧へもどる</a></div>`;
+    $('panel').hidden = true;
+    return;
   }
+  const { id, ...rest } = sg;
+  state.songs = { [id]: rest };
+  state.order = [id];
   state.ready = true;
-  if (!state.order.length) {
-    createSong({ title: 'はじめての曲', capo: 0, meter: '4/4', tempo: 90 }, false);
-  } else {
-    openSong(state.order[0]);
-  }
-  showWhere();
+  openSong(id);
   setStatus('saved', user ? 'アカウントに保存済み' : 'このブラウザに保存済み');
 }
 
-function showWhere() {
-  const p = $('where');
-  p.hidden = false;
-  p.textContent = '';
-  if (state.mode === 'account') {
-    p.textContent = '曲はアカウントに保存され、どの端末からでも開けます。';
-  } else if (account.isConfigured) {
-    p.append('ログインしていないので、曲はこのブラウザだけに保存されます。');
-    const a = document.createElement('a');
-    a.href = account.loginUrl('../index.html', 'login');
-    a.textContent = 'ログインするとアカウントに保存できます';
-    p.append(' ', a);
-  } else {
-    p.textContent = '曲はこのブラウザに保存されます。';
-  }
+function saveLocalNow() {
+  try {
+    putSong('local', { id: state.currentId, ...song() });
+    return true;
+  } catch { return false; }
 }
 
 const timers = {};
@@ -182,7 +122,7 @@ function scheduleSave(id = state.currentId) {
     clearTimeout(timers.local);
     timers.local = setTimeout(() => {
       timers.local = null;
-      const ok = writeLocal();
+      const ok = saveLocalNow();
       setStatus(ok ? 'saved' : 'error', ok ? 'このブラウザに保存済み' : 'このブラウザに保存できませんでした（容量がいっぱいかもしれません）');
     }, 250);
     return;
@@ -200,12 +140,7 @@ async function flush(id) {
   const sg = state.songs[id];
   try {
     if (sg) {
-      await account.guitarTabs.put({
-        id, title: sg.title, position: sg.position, createdAt: sg.createdAt, updatedAt: sg.updatedAt,
-        data: JSON.stringify(sg.body),
-      });
-    } else {
-      await account.guitarTabs.remove(id);
+      await putSong('account', { id, ...sg });
     }
     if (!pending.size) setStatus('saved', 'アカウントに保存済み');
   } catch (e) {
@@ -216,22 +151,13 @@ async function flush(id) {
 
 // ブラウザ保存は少し待ってまとめて書くので、ページを離れるときはすぐ書く
 window.addEventListener('pagehide', () => {
-  if (state.mode === 'local' && timers.local) { clearTimeout(timers.local); timers.local = null; writeLocal(); }
+  if (state.mode === 'local' && timers.local) { clearTimeout(timers.local); timers.local = null; saveLocalNow(); }
 });
 window.addEventListener('beforeunload', (e) => {
   if (pending.size) { e.preventDefault(); e.returnValue = ''; }
 });
 
 /* ---------- 曲の操作 ---------- */
-
-function createSong(opts, focus = true) {
-  const id = uid();
-  state.songs[id] = { title: opts.title?.trim() || '新しい曲', position: state.order.length, createdAt: Date.now(), updatedAt: Date.now(), body: newBody(opts) };
-  state.order.push(id);
-  scheduleSave(id);
-  openSong(id);
-  if (focus) { $('title').focus(); $('title').select(); }
-}
 
 function openSong(id) {
   stop();
@@ -243,16 +169,23 @@ function openSong(id) {
   renderAll();
 }
 
-function deleteSong() {
+async function deleteSong() {
   const sg = song();
   if (!sg) return;
   if (!confirm(`「${sg.title}」を削除します。元に戻せません。よろしいですか？`)) return;
+  stop();
   const id = state.currentId;
-  delete state.songs[id];
-  state.order = state.order.filter((x) => x !== id);
-  scheduleSave(id);
-  if (!state.order.length) createSong({ title: '新しい曲' }, false);
-  else openSong(state.order[0]);
+  // 書きかけの保存を止めてから消す
+  clearTimeout(timers.local); timers.local = null;
+  clearTimeout(timers[id]); pending.delete(id);
+  try {
+    await removeSong(state.mode, id);
+  } catch (e) {
+    alert('削除できませんでした。' + (e.message || ''));
+    return;
+  }
+  state.ready = false;
+  location.href = 'index.html';
 }
 
 /** 曲の中身を変える。元に戻せるように前の状態を残す */
@@ -789,8 +722,7 @@ function renderScore() {
 function renderSongbar() {
   const sg = song();
   const b = body();
-  const sel = $('song-select');
-  sel.innerHTML = state.order.map((id) => `<option value="${id}"${id === state.currentId ? ' selected' : ''}>${esc(state.songs[id].title || '無題')}</option>`).join('');
+  document.title = `${sg.title || '無題'} - ギター譜`;
   if (document.activeElement !== $('title')) $('title').value = sg.title;
   $('capo').value = P(b).capo;
   $('meter').value = b.meter;
@@ -1207,16 +1139,13 @@ function fillCapoOptions(sel) {
   sel.innerHTML = Array.from({ length: 13 }, (_, i) => `<option value="${i}">${i === 0 ? 'なし' : i}</option>`).join('');
 }
 fillCapoOptions($('capo'));
-fillCapoOptions($('new-capo'));
 
-$('song-select').addEventListener('change', (e) => openSong(e.target.value));
 $('title').addEventListener('input', (e) => {
   song().title = e.target.value;
   song().updatedAt = Date.now();
   scheduleSave();
   $('sheet-title').textContent = e.target.value;
-  const opt = $('song-select').selectedOptions[0];
-  if (opt) opt.textContent = e.target.value || '無題';
+  document.title = `${e.target.value || '無題'} - ギター譜`;
 });
 $('capo').addEventListener('change', (e) => { edit((b) => { P(b).capo = Number(e.target.value); }); });
 $('meter').addEventListener('change', (e) => changeMeter(e.target.value));
@@ -1265,19 +1194,6 @@ $('delete-song').addEventListener('click', deleteSong);
 $('add-measure').addEventListener('click', addMeasure);
 $('insert-measure').addEventListener('click', insertMeasure);
 $('remove-measure').addEventListener('click', removeMeasure);
-
-$('new-song').addEventListener('click', () => {
-  if (!state.ready) return;
-  const f = $('new-form');
-  f.title.value = '新しい曲'; f.capo.value = '0'; f.meter.value = '4/4'; f.tempo.value = '90';
-  $('new-dialog').showModal();
-  f.title.select();
-});
-$('new-dialog').addEventListener('close', () => {
-  if ($('new-dialog').returnValue !== 'ok') return;
-  const f = $('new-form');
-  createSong({ title: f.title.value, capo: f.capo.value, meter: f.meter.value, tempo: f.tempo.value });
-});
 
 $('text-out').addEventListener('click', () => {
   $('text-area').value = toText();
