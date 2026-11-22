@@ -165,11 +165,14 @@ function sortable(row, handle, getRows, index, onMove) {
   handle.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
+    // 行を DOM 上で動かすとつまみのポインタキャプチャが外れるので、ページ全体で受け取る
+    const pid = e.pointerId;
     const parent = row.parentElement;
     row.classList.add('dragging');
     document.body.classList.add('sorting');
     const move = (ev) => {
+      if (ev.pointerId !== pid) return;
+      ev.preventDefault();
       // ポインタの高さに応じて、行を DOM 上で入れ替えて見せる
       for (const other of getRows()) {
         if (other === row) continue;
@@ -180,18 +183,19 @@ function sortable(row, handle, getRows, index, onMove) {
         if (!before && ev.clientY > mid) { parent.insertBefore(row, other.nextSibling); }
       }
     };
-    const end = () => {
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', end);
-      handle.removeEventListener('pointercancel', end);
+    const end = (ev) => {
+      if (ev.pointerId !== pid) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
       row.classList.remove('dragging');
       document.body.classList.remove('sorting');
       const to = getRows().indexOf(row);
       if (to !== index) onMove(index, to); else render();
     };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', end);
-    handle.addEventListener('pointercancel', end);
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   });
 }
 
