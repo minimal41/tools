@@ -41,7 +41,9 @@ async function load(user) {
   } else {
     lists = readLocal();
   }
-  lists.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  // position（並び替えた順）を優先し、無いものは作った順
+  const pos = (l) => (typeof l.position === 'number' ? l.position : Infinity);
+  lists.sort((a, b) => pos(a) - pos(b) || (a.createdAt || 0) - (b.createdAt || 0));
   state.lists = {}; state.order = [];
   for (const { id, ...l } of lists) { state.lists[id] = l; state.order.push(id); }
   state.currentId = state.order[0] || null;
@@ -110,13 +112,97 @@ window.addEventListener('beforeunload', (e) => {
 function createList() {
   if (!state.ready) return;
   const id = uid();
-  state.lists[id] = { title: '新しいリスト', items: [], createdAt: Date.now(), updatedAt: Date.now() };
+  state.lists[id] = { title: '新しいリスト', items: [], position: state.order.length, createdAt: Date.now(), updatedAt: Date.now() };
   state.order.push(id);
   state.currentId = id; state.confirmDelete = false;
   scheduleSave(id); render();
   const t = $('title-input'); if (t) { t.focus(); t.select(); }
 }
 function touch(id) { state.lists[id].updatedAt = Date.now(); scheduleSave(id); }
+
+function moveInArray(arr, from, to) {
+  const [x] = arr.splice(from, 1);
+  arr.splice(to, 0, x);
+}
+
+/** リストの順番を変えて、順番が変わったリストだけ保存する */
+function moveList(from, to) {
+  if (from === to) return;
+  moveInArray(state.order, from, to);
+  state.order.forEach((id, i) => {
+    if (state.lists[id].position !== i) { state.lists[id].position = i; scheduleSave(id); }
+  });
+  render();
+}
+
+function moveItem(listId, from, to) {
+  if (from === to) return;
+  moveInArray(state.lists[listId].items, from, to);
+  touch(listId);
+  render();
+}
+
+/* ---------- 並び替え（つまみをドラッグ、またはつまみにフォーカスして ↑↓） ---------- */
+
+/**
+ * row: 動かす行。handle: そのつまみ。getRows: 並んでいる行をいまの順で返す。index: 元の番号。
+ * onMove(from, to) で状態を更新して描画し直す。
+ */
+function sortable(row, handle, getRows, index, onMove) {
+  handle.addEventListener('keydown', (e) => {
+    const n = getRows().length;
+    let to = null;
+    if (e.key === 'ArrowUp' && index > 0) to = index - 1;
+    if (e.key === 'ArrowDown' && index < n - 1) to = index + 1;
+    if (to === null) return;
+    e.preventDefault();
+    const focusKey = handle.dataset.key;
+    onMove(index, to);
+    const again = document.querySelector(`.handle[data-key="${focusKey}"]`);
+    if (again) again.focus();
+  });
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const parent = row.parentElement;
+    row.classList.add('dragging');
+    document.body.classList.add('sorting');
+    const move = (ev) => {
+      // ポインタの高さに応じて、行を DOM 上で入れ替えて見せる
+      for (const other of getRows()) {
+        if (other === row) continue;
+        const r = other.getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        const before = row.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_PRECEDING;
+        if (before && ev.clientY < mid) { parent.insertBefore(row, other); break; }
+        if (!before && ev.clientY > mid) { parent.insertBefore(row, other.nextSibling); }
+      }
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      row.classList.remove('dragging');
+      document.body.classList.remove('sorting');
+      const to = getRows().indexOf(row);
+      if (to !== index) onMove(index, to); else render();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  });
+}
+
+function makeHandle(key, label) {
+  const h = document.createElement('button');
+  h.type = 'button'; h.className = 'handle'; h.textContent = '⋮⋮';
+  h.dataset.key = key;
+  h.setAttribute('aria-label', `${label}を並び替え（↑↓キーで移動）`);
+  h.title = 'ドラッグで並び替え';
+  return h;
+}
 
 /* ---------- 描画 ---------- */
 
@@ -128,16 +214,21 @@ function button(cls, text, onClick) {
 
 function renderNav() {
   const nav = $('list-nav'); nav.textContent = '';
-  for (const id of state.order) {
-    const l = state.lists[id]; if (!l) continue;
+  const getRows = () => [...nav.querySelectorAll('.nav-row')];
+  state.order.forEach((id, index) => {
+    const l = state.lists[id]; if (!l) return;
+    const row = document.createElement('div'); row.className = 'nav-row';
+    const handle = makeHandle('list-' + id, `「${l.title || '無題のリスト'}」`);
+    sortable(row, handle, getRows, index, moveList);
     const b = button('list-btn', '', () => { state.currentId = id; state.confirmDelete = false; render(); });
     b.setAttribute('aria-current', id === state.currentId ? 'true' : 'false');
     const name = document.createElement('span'); name.textContent = l.title || '無題のリスト';
     const c = document.createElement('span'); c.className = 'count';
     c.textContent = `${l.items.filter((i) => i.done).length}/${l.items.length}`;
     b.append(name, c);
-    nav.append(b);
-  }
+    row.append(handle, b);
+    nav.append(row);
+  });
   $('new-list').hidden = !state.ready;
 }
 
@@ -181,15 +272,19 @@ function renderMain() {
     const li = document.createElement('li'); li.className = 'empty'; li.style.border = '0';
     li.textContent = '上の欄から項目を追加してください。'; ul.append(li);
   }
-  for (const it of l.items) {
+  const getItemRows = () => [...ul.querySelectorAll('li[data-item]')];
+  l.items.forEach((it, index) => {
     const li = document.createElement('li'); if (it.done) li.className = 'done';
+    li.dataset.item = it.id;
+    const handle = makeHandle('item-' + it.id, `「${it.text}」`);
+    sortable(li, handle, getItemRows, index, (from, to) => moveItem(id, from, to));
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = it.done; cb.id = 'cb-' + it.id;
     cb.onchange = () => { it.done = cb.checked; touch(id); render(); };
     const lab = document.createElement('label'); lab.className = 'text'; lab.htmlFor = cb.id; lab.textContent = it.text;
     const del = button('ghost danger del', '削除', () => { l.items = l.items.filter((x) => x !== it); touch(id); render(); });
     del.setAttribute('aria-label', `「${it.text}」を削除`);
-    li.append(cb, lab, del); ul.append(li);
-  }
+    li.append(handle, cb, lab, del); ul.append(li);
+  });
   const foot = $('foot');
   if (state.confirmDelete) {
     const box = document.createElement('div'); box.className = 'confirm';

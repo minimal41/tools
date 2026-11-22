@@ -93,6 +93,19 @@ ul.items li:last-child { border-bottom: 0; }
 ul.items input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; cursor: pointer; }
 ul.items .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 ul.items li.done .text { color: var(--muted); text-decoration: line-through; }
+.handle {
+  all: unset; cursor: grab; touch-action: none; flex: none; color: var(--muted); font-size: .9rem;
+  letter-spacing: -2px; padding: 4px 6px; border-radius: 6px; line-height: 1; user-select: none;
+}
+.handle:hover { color: var(--ink); background: var(--bg); }
+.handle:active { cursor: grabbing; }
+.nav-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.nav-row .list-btn { flex: 1; }
+.nav-row .handle { opacity: 0; }
+.nav-row:hover .handle, .nav-row .handle:focus-visible { opacity: 1; }
+@media (hover: none) { .nav-row .handle { opacity: 1; } }
+.dragging { opacity: .55; background: var(--accent-soft); border-radius: 8px; }
+body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 ul.items .del { opacity: 0; }
 ul.items li:hover .del, ul.items .del:focus-visible { opacity: 1; }
 @media (hover: none) { ul.items .del { opacity: 1; } }
