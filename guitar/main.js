@@ -514,7 +514,14 @@ function changeMeter(next) {
 
 /* ---------- 楽譜の描画 ---------- */
 
-const CW = 24, PADL = 10, PADR = 8;
+// 印刷のときは1行に4小節入るように、マスを細くして描き直す（CSS で幅を 1/4 にする）
+let CW = 24, PADL = 10, PADR = 8;
+function setPrintLayout(on) {
+  [CW, PADL, PADR] = on ? [16, 8, 4] : [24, 10, 8];
+  renderScore();
+}
+window.addEventListener('beforeprint', () => setPrintLayout(true));
+window.addEventListener('afterprint', () => setPrintLayout(false));
 const NAME_Y = 24, DG_Y = 36, STROKE_Y = 90, STR_Y0 = 114, STR_GAP = 13, BEAT_Y = 196, H = 204;
 const strY = (str) => STR_Y0 + (5 - str) * STR_GAP; // 1弦がいちばん上
 const colX = (s) => PADL + s * CW;
