@@ -14,7 +14,7 @@ import {
   signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, doc, setDoc, getDoc, serverTimestamp,
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc, collection, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig, apiBase } from './config.js';
 
@@ -399,5 +399,29 @@ export const fonts = {
   },
   async remove(name) {
     await api('/api/fonts?name=' + enc(name), { method: 'DELETE' });
+  },
+};
+
+/* ---------- チェックリスト ---------- */
+
+// Firestore の users/{uid}/checklists/{id} に保存する（firestore.rules で本人だけが読み書きできる）
+function checklistCol() {
+  if (!currentUser || !db) throw Object.assign(new Error('ログインしていません。'), { code: 'tools/not-logged-in' });
+  return collection(db, 'users', currentUser.uid, 'checklists');
+}
+
+export const checklists = {
+  /** すべてのリスト：{ id, title, items: [{ id, text, done }], createdAt, updatedAt } */
+  async list() {
+    const snap = await getDocs(checklistCol());
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  },
+  /** 保存（無ければ作成） */
+  async put(list) {
+    const { id, ...data } = list;
+    await setDoc(doc(checklistCol(), id), data);
+  },
+  async remove(id) {
+    await deleteDoc(doc(checklistCol(), id));
   },
 };
