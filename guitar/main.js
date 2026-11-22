@@ -519,28 +519,32 @@ const NAME_Y = 24, DG_Y = 36, STROKE_Y = 90, STR_Y0 = 114, STR_GAP = 13, BEAT_Y 
 const strY = (str) => STR_Y0 + (5 - str) * STR_GAP; // 1弦がいちばん上
 const colX = (s) => PADL + s * CW;
 
-/** コードのダイアグラム（左上が x, y）。w = 弦の間隔 */
-function diagramSvg(frets, x, y, w = 6.2, h = 9) {
+/**
+ * コードのダイアグラム（横向き）。1弦が上・6弦が下、左がナット（ヘッド側）。
+ * x, y = ナットの上端。fw = フレットの間隔（横）、sg = 弦の間隔（縦）。開放・ミュートの印はナットの左に出る
+ */
+function diagramSvg(frets, x, y, fw = 9.5, sg = 6) {
   const { start, barre } = diagramInfo(frets);
-  const width = w * 5;
+  const width = fw * 4, height = sg * 5;
+  const sy = (i) => y + (5 - i) * sg; // i: 0 = 6弦 … 5 = 1弦
   let out = `<g class="dg">`;
-  for (let i = 0; i < 6; i++) out += `<line class="s" x1="${x + i * w}" y1="${y}" x2="${x + i * w}" y2="${y + h * 4}"/>`;
-  for (let k = 0; k <= 4; k++) out += `<line class="${k === 0 && start === 1 ? 'nut' : 'f'}" x1="${x}" y1="${y + k * h}" x2="${x + width}" y2="${y + k * h}"/>`;
-  if (start > 1) out += `<text class="pos" x="${x + width + 3}" y="${y + h * 0.5 + 3}">${start}fr</text>`;
-  const r = Math.min(w, h) * 0.38;
+  for (let i = 0; i < 6; i++) out += `<line class="s" x1="${x}" y1="${sy(i)}" x2="${x + width}" y2="${sy(i)}"/>`;
+  for (let k = 0; k <= 4; k++) out += `<line class="${k === 0 && start === 1 ? 'nut' : 'f'}" x1="${x + k * fw}" y1="${y}" x2="${x + k * fw}" y2="${y + height}"/>`;
+  if (start > 1) out += `<text class="pos" x="${x + fw * 0.5}" y="${y + height + 8}" text-anchor="middle">${start}fr</text>`;
+  const r = Math.min(fw, sg) * 0.4;
   if (barre) {
-    const k = barre.fret - start;
-    out += `<rect class="fd" x="${x + barre.from * w - r}" y="${y + (k + 0.5) * h - r}" width="${(barre.to - barre.from) * w + r * 2}" height="${r * 2}" rx="${r}"/>`;
+    const cx = x + (barre.fret - start + 0.5) * fw;
+    out += `<rect class="fd" x="${cx - r}" y="${sy(barre.to) - r}" width="${r * 2}" height="${(barre.to - barre.from) * sg + r * 2}" rx="${r}"/>`;
   }
   frets.forEach((f, i) => {
-    const cx = x + i * w;
+    const cy = sy(i);
     if (f === 'x') {
-      const m = r * 0.9, cy = y - 4;
+      const m = r * 0.85, cx = x - 5;
       out += `<line class="mute" x1="${cx - m}" y1="${cy - m}" x2="${cx + m}" y2="${cy + m}"/><line class="mute" x1="${cx - m}" y1="${cy + m}" x2="${cx + m}" y2="${cy - m}"/>`;
     } else if (f === 0) {
-      out += `<circle class="open" cx="${cx}" cy="${y - 4}" r="${r * 0.9}"/>`;
+      out += `<circle class="open" cx="${x - 5}" cy="${cy}" r="${r * 0.85}"/>`;
     } else if (!(barre && f === barre.fret && i >= barre.from && i <= barre.to)) {
-      out += `<circle class="fd" cx="${cx}" cy="${y + (f - start + 0.5) * h}" r="${r}"/>`;
+      out += `<circle class="fd" cx="${x + (f - start + 0.5) * fw}" cy="${cy}" r="${r}"/>`;
     }
   });
   return out + '</g>';
@@ -589,9 +593,9 @@ function measureSvg(mi) {
     const x = colX(s) + 4;
     const selected = state.selChord && state.selChord.m === mi && state.selChord.s === s;
     o += `<g class="chordmark${selected ? ' selected' : ''}" data-cm="${mi}" data-cs="${s}">`;
-    o += `<rect class="hit" x="${colX(s)}" y="12" width="${Math.min(room, 52)}" height="${STROKE_Y - 14}" rx="4"/>`;
+    o += `<rect class="hit" x="${colX(s)}" y="12" width="${Math.min(room, 58)}" height="${STROKE_Y - 14}" rx="4"/>`;
     o += `<text class="cname" x="${x}" y="${NAME_Y}">${esc(displayName(c))}</text>`;
-    if (room >= 46) o += diagramSvg(c.f, x + 2, DG_Y, 6.8, 9.5);
+    if (room >= 48) o += diagramSvg(c.f, x + 7, DG_Y, 9.5, 6.2);
     o += `</g>`;
   });
 
@@ -749,7 +753,7 @@ function chordPanel() {
   } else {
     h += `<div class="voicings">`;
     shown.forEach((f, i) => {
-      h += `<button type="button" data-vi="${i}" aria-pressed="${p.vi === i}" title="${f.join(' ')}"><svg viewBox="-4 -10 58 52" aria-hidden="true">${diagramSvg(f, 2, 0, 6.6, 9)}</svg><span class="vf">${f.join(' ')}</span></button>`;
+      h += `<button type="button" data-vi="${i}" aria-pressed="${p.vi === i}" title="${f.join(' ')}"><svg viewBox="-11 -4 56 54" aria-hidden="true">${diagramSvg(f, 0, 2, 10, 7)}</svg><span class="vf">${f.join(' ')}</span></button>`;
     });
     h += `</div>`;
     if (list.length > 8) h += `<div class="seg"><button type="button" data-act="more">${p.showAll ? '少なく表示' : 'ほかの押さえ方も見る'}</button></div>`;
