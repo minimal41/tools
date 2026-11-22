@@ -128,8 +128,17 @@ button:focus-visible, select:focus-visible, input:focus-visible, .cell:focus-vis
 .add-measure { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---- パネル ---- */
+/* 再生・取り消しのバー：スクロールしても画面の上に残る */
+.playbar {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+  margin-inline: -4px; padding: 8px 4px; background: color-mix(in srgb, var(--bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+}
+.playbar .btn { padding: 6px 12px; }
+.playbar #play { min-width: 92px; justify-content: center; }
+.pb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .82rem; margin-left: 6px; }
 .panel {
-  position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto;
+  position: sticky; top: 62px; max-height: calc(100vh - 74px); overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column;
 }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
@@ -207,6 +216,8 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
   .tools { margin-left: 0; }
 }
 @media (max-width: 520px) {
+  .playbar .btn { padding: 6px 9px; }
+  .pb-title { display: none; }
   .field.small select, .field.small input { width: 70px; }
   .sheet { padding: 12px 8px 18px; }
 }
@@ -214,7 +225,7 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
 @media print {
   :root, :root[data-theme="dark"] { --paper: #fff; --ink: #000; --staff: #666; --line: #ccc; --muted: #555; color-scheme: light; }
   body { background: #fff; padding: 0; }
-  .home, header.top, .note, .songbar, .panel, .add-measure, .measure .selcell, .measure .selcol, .measure .ph { display: none !important; }
+  .home, header.top, .playbar, .note, .songbar, .panel, .add-measure, .measure .selcell, .measure .selcol, .measure .ph { display: none !important; }
   .main { display: block; }
   .sheet { border: 0; padding: 0; }
   @page { size: A4 portrait; margin: 12mm; }
@@ -245,15 +256,19 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
       <select id="namemode"><option value="shape">押さえ方</option><option value="sound">実音</option></select>
     </label>
     <div class="tools">
-      <button class="btn primary" id="play" type="button">▶ 再生</button>
-      <button class="btn" id="undo" type="button" title="元に戻す（Ctrl+Z）">↶</button>
-      <button class="btn" id="redo" type="button" title="やり直す（Ctrl+Shift+Z）">↷</button>
       <button class="btn" id="new-song" type="button">＋ 新しい曲</button>
       <button class="btn" id="text-out" type="button">テキスト</button>
       <button class="btn" id="print" type="button">印刷・PDF</button>
       <button class="btn danger" id="delete-song" type="button">削除</button>
     </div>
   </section>
+
+  <div class="playbar" role="toolbar" aria-label="再生と取り消し">
+    <button class="btn primary" id="play" type="button">▶ 再生</button>
+    <button class="btn" id="undo" type="button" title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶ 戻す</button>
+    <button class="btn" id="redo" type="button" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷ やり直す</button>
+    <span class="pb-title" id="pb-title"></span>
+  </div>
 
   <div class="main">
     <section class="sheet" aria-label="楽譜">

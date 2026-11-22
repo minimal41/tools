@@ -651,6 +651,7 @@ function renderScore() {
   $('score').innerHTML = b.measures.map((_, i) => measureSvg(i)).join('');
   const sg = song();
   $('sheet-title').textContent = sg.title;
+  $('pb-title').textContent = sg.title;
   const meta = [];
   meta.push(b.capo ? `<span><b>Capo ${b.capo}</b></span>` : '<span>カポなし</span>');
   meta.push(`<span>${esc(b.meter)}</span>`, `<span>♩ = ${b.tempo}</span>`);
@@ -972,6 +973,7 @@ $('title').addEventListener('input', (e) => {
   song().updatedAt = Date.now();
   scheduleSave();
   $('sheet-title').textContent = e.target.value;
+  $('pb-title').textContent = e.target.value;
   const opt = $('song-select').selectedOptions[0];
   if (opt) opt.textContent = e.target.value || '無題';
 });
