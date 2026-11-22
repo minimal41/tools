@@ -156,9 +156,6 @@ function pluckBuffer(midi, muted) {
     const cents = ch ? 1.6 : -1.2;
     string(d, freq * Math.pow(2, cents / 1200), sr, { t60, bright, pickPos: 0.13 + ch * 0.02, gain: 0.75 });
     string(d, freq * Math.pow(2, (cents * -0.5 + 0.4) / 1200), sr, { t60: t60 * 0.85, bright: bright * 0.9, pickPos: 0.2, gain: 0.25 });
-    // 弾いた瞬間のピックの当たり
-    const click = Math.floor(sr * 0.004);
-    for (let i = 0; i < click; i++) d[i] += (Math.random() * 2 - 1) * 0.12 * (1 - i / click);
     // 最後はなめらかに消す
     const fade = Math.floor(sr * (muted ? 0.02 : 0.4));
     for (let i = 0; i < fade; i++) d[len - 1 - i] *= i / fade;
