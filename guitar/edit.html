@@ -244,6 +244,9 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
   .sheet { border: 0; padding: 0; }
   /* 小節は右へ1px はみ出す並べ方なので、右端の小節線が紙の端で切れないように少しあける */
   .score { padding-right: 3px; }
+  /* 選んでいる・マウスが乗っている印（オレンジ）は印刷しない */
+  .measure .cell, .measure .col, .chordmark .hit { fill: transparent !important; }
+  .chordmark .cname { fill: var(--ink) !important; }
   @page { size: A4 portrait; margin: 12mm; }
   /* 1行に4小節（main.js が印刷用に細いマスで描き直す）。入り切らない行は2小節 */
   .score svg.measure { break-inside: avoid; width: calc(25% + 1px) !important; height: auto !important; }

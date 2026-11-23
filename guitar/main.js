@@ -662,7 +662,7 @@ function measureSvg(mi, printWidth = '') {
   const n = mt.steps;
   const W = PADL + n * CW + PADR;
   const sel = state.sel;
-  const isSelM = sel.m === mi;
+  const isSelM = !printing && sel.m === mi; // 印刷では選んでいる印を描かない
   let o = `<svg class="measure${printWidth ? ' print-' + printWidth : ''}" data-m="${mi}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="group" aria-label="${mi + 1}小節目">`;
   o += `<text class="num" x="2" y="10">${mi + 1}</text>`;
 
@@ -691,7 +691,7 @@ function measureSvg(mi, printWidth = '') {
     const next = i + 1 < keys.length ? keys[i + 1] : n + 2;
     const room = (next - s) * CW;
     const x = colX(s) + 4;
-    const selected = state.selChord && state.selChord.m === mi && state.selChord.s === s;
+    const selected = !printing && state.selChord && state.selChord.m === mi && state.selChord.s === s;
     o += `<g class="chordmark${selected ? ' selected' : ''}" data-cm="${mi}" data-cs="${s}">`;
     o += `<rect class="hit" x="${colX(s)}" y="12" width="${Math.min(room, 58)}" height="${STROKE_Y - 14}" rx="4"/>`;
     o += `<text class="cname" x="${x}" y="${NAME_Y}">${esc(displayName(c))}</text>`;
