@@ -17,7 +17,7 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 
 /* ---------- 曲データ ---------- */
 
-export function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {}, sl: {}, tr: {} }; }
+export function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {}, sl: {}, bm: {} }; }
 
 export function newPart(name, capo = 0, count = 4) {
   return { name, capo: Number(capo) || 0, measures: Array.from({ length: count }, emptyMeasure) };
@@ -30,18 +30,35 @@ export function clampTempo(v) {
 
 export function newBody(opts = {}) {
   return {
+    res: 32, // 1マス = 32分音符
     meter: METER_IDS.includes(opts.meter) ? opts.meter : '4/4',
     tempo: clampTempo(opts.tempo ?? 90), nameMode: 'shape',
     parts: [newPart('パート1', opts.capo)],
   };
 }
 
+function to32(m, tr) {
+  const dk = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [String(Number(k) * 2), v]));
+  const dks = (o, len) => Object.fromEntries(Object.entries(o).map(([k, v]) => {
+    const [s, str] = k.split('_');
+    return [`${Number(s) * 2}_${str}`, len ? Number(v) * 2 : v];
+  }));
+  const bm = {};
+  for (const k of Object.keys(tr || {})) bm[String(Number(k) * 2)] = '3'; // 以前の3連符
+  return { n: dk(m.n), st: dk(m.st), c: dk(m.c), sc: dk(m.sc), t: dks(m.t), sl: dks(m.sl, true), bm };
+}
+
 /** 保存されていた中身を、今の形にそろえる（古い形の曲も読めるように） */
 export function normalizeBody(b) {
   const out = newBody(b || {});
   out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
+  // 以前の曲は1マス = 16分音符だったので、マスの番号を2倍にして32分音符のマスにする
+  const old = b?.res !== 32;
   const fixMeasures = (ms) => (Array.isArray(ms) && ms.length
-    ? ms.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {}, sl: m?.sl || {}, tr: m?.tr || {} }))
+    ? ms.map((m) => {
+      const mm = { n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {}, sl: m?.sl || {}, bm: m?.bm || {} };
+      return old ? to32(mm, m?.tr) : mm;
+    })
     : Array.from({ length: 4 }, emptyMeasure));
   if (Array.isArray(b?.parts) && b.parts.length) {
     out.parts = b.parts.map((pp, i) => ({ name: pp?.name || `パート${i + 1}`, capo: Number(pp?.capo) || 0, measures: fixMeasures(pp?.measures) }));
