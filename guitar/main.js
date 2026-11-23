@@ -228,6 +228,55 @@ function clampSel() {
 /* ---------- 位置 ---------- */
 
 const gOf = (m, s) => m * S() + s;
+
+/*
+ * 3連符：拍（16分音符4つ分）を3等分する。その拍の 1〜3つ目のマスを3連符の3音として使い、4つ目のマスは使わない。
+ * meas.tr = { 拍の最初のマス: 1 }
+ */
+const tripletOK = () => meter().beat === 4;
+function isHidden(meas, s) {
+  if (!tripletOK() || !meas?.tr) return false;
+  return !!meas.tr[s - (s % 4)] && s % 4 === 3;
+}
+/** マスの左端と幅（3連符の拍は3等分） */
+function cellBox(meas, s) {
+  const b0 = s - (s % 4);
+  if (tripletOK() && meas?.tr?.[b0] && s % 4 < 3) {
+    const w = (CW * 4) / 3;
+    return { x: colX(b0) + (s - b0) * w, w };
+  }
+  return { x: colX(s), w: CW };
+}
+const cellCx = (meas, s) => { const c = cellBox(meas, s); return c.x + c.w / 2; };
+/** 3連符の音は、16分の位置から少し後ろへずらして鳴らす（何秒ずらすか） */
+function tripletShift(meas, s, dt) {
+  const b0 = s - (s % 4);
+  if (!tripletOK() || !meas?.tr?.[b0]) return 0;
+  return ((s - b0) * dt) / 3;
+}
+
+/*
+ * スラー：始めの音から終わりの音までを、弾き直さずになめらかにつなぐ。
+ * 始めの音のある小節に meas.sl = { "マス_弦": 終わりまでのマスの数 } で持つ
+ */
+function slursOn(ms, mi) {
+  // この小節にかかるスラー [{ a, b, str }]（a, b は曲の頭からのマスの通し番号）
+  const n = S();
+  const out = [];
+  for (let m = Math.max(0, mi - 16); m <= mi; m++) {
+    for (const [key, len] of Object.entries(ms[m]?.sl || {})) {
+      const [s, str] = key.split('_').map(Number);
+      const a = m * n + s, b = a + Number(len);
+      if (b >= mi * n && a < (mi + 1) * n) out.push({ a, b, str, m, key });
+    }
+  }
+  return out;
+}
+/** g の位置のその弦の音が、スラーの途中（始めの音より後ろ）か */
+function inSlur(ms, g, str) {
+  const n = S();
+  return slursOn(ms, Math.floor(g / n)).some((sl) => sl.str === str && g > sl.a && g <= sl.b);
+}
 function setSelG(g, str = state.sel.str) {
   const b = body();
   g = Math.max(0, g);
@@ -293,6 +342,7 @@ function setLegato(kind) {
   const v = meas.n[s]?.[str];
   if (v == null || v === 'x') { flash('先に、印を付ける音のフレットを入れてください（ハンマリング・プリング・スライドはあとの音）。'); return; }
   const prev = prevNote(m, s, str);
+  if (kind === 'ti' && (!prev || prev.fret !== v)) { flash('タイは、同じ弦の前（2小節以内）に同じフレットの音があるときに付けられます。'); return; }
   const needsPrev = kind === 'h' || kind === 'p' || kind === 's' || kind === 'auto';
   if (needsPrev && (!prev || prev.fret === v)) { flash('同じ弦の前（2小節以内）に、高さの違う音があるときに付けられます。'); return; }
   if (kind === 'gu' && v === 0) { flash('開放弦には下から入るグリッサンドを付けられません。'); return; }
@@ -313,6 +363,63 @@ function flash(text) {
   el.hidden = false;
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { el.hidden = true; }, 3500);
+}
+
+/** スラー：1回目で始めの音、2回目で終わりの音を決める */
+function slurStep() {
+  const { m, s, str } = state.sel;
+  const v = pt().measures[m].n[s]?.[str];
+  if (v == null || v === 'x') { flash('スラーを付ける音（フレット）を選んでください。'); return; }
+  const g = gOf(m, s);
+  const st = state.slurStart;
+  if (!st || st.songPart !== `${state.currentId}:${state.part}`) {
+    state.slurStart = { g, str, songPart: `${state.currentId}:${state.part}` };
+    renderPanel();
+    flash('始めの音を決めました。次に、終わりの音を選んで「スラー：ここまで」を押してください。');
+    return;
+  }
+  if (st.str !== str || g <= st.g) {
+    flash('終わりの音は、始めの音と同じ弦の、後ろの音を選んでください。');
+    return;
+  }
+  const n = S();
+  const am = Math.floor(st.g / n), as = st.g % n;
+  state.slurStart = null;
+  edit((b) => {
+    const meas = P(b).measures[am];
+    meas.sl ||= {};
+    meas.sl[`${as}_${str}`] = g - st.g;
+  });
+}
+
+/** 選んでいる音にかかっているスラーを外す */
+function removeSlur() {
+  const { m, s, str } = state.sel;
+  const g = gOf(m, s);
+  const hits = slursOn(pt().measures, m).filter((sl) => sl.str === str && g >= sl.a && g <= sl.b);
+  state.slurStart = null;
+  if (!hits.length) { renderPanel(); flash('選んでいる音にスラーはかかっていません。'); return; }
+  edit((b) => { for (const h of hits) delete P(b).measures[h.m].sl[h.key]; });
+}
+
+/** 選んでいる拍を3連符にする／戻す */
+function toggleTriplet() {
+  if (!tripletOK()) { flash('3連符は 4/4・3/4・2/4 で使えます。'); return; }
+  const { m, s } = state.sel;
+  const b0 = s - (s % 4);
+  edit((b) => {
+    const meas = P(b).measures[m];
+    meas.tr ||= {};
+    if (meas.tr[b0]) { delete meas.tr[b0]; return; }
+    meas.tr[b0] = 1;
+    // 使わなくなる4つ目のマスの中身は消す
+    const h = b0 + 3;
+    delete meas.n[h]; delete meas.st[h];
+    if (meas.sc) delete meas.sc[h];
+    if (meas.t) for (const key of Object.keys(meas.t)) if (parseInt(key, 10) === h) delete meas.t[key];
+  });
+  if (s % 4 === 3) state.sel.s = b0 + 2;
+  renderAll();
 }
 
 function setStroke(v) {
@@ -343,7 +450,10 @@ function typeDigit(d) {
 }
 
 function moveSel(dStep, dStr = 0) {
-  const g = gOf(state.sel.m, state.sel.s) + dStep;
+  let g = gOf(state.sel.m, state.sel.s) + dStep;
+  // 3連符の拍の使わないマスは飛ばす
+  const n = S();
+  while (g >= 0 && isHidden(pt().measures[Math.floor(g / n)], g % n)) g += dStep >= 0 ? 1 : -1;
   const str = Math.min(5, Math.max(0, state.sel.str + dStr));
   if (g < 0) return;
   setSelG(g, str);
@@ -431,6 +541,7 @@ function applyChord() {
       if (pat.kind === 'none') continue;
       delete meas.n[s]; delete meas.st[s]; if (meas.sc) delete meas.sc[s];
       if (meas.t) for (const key of Object.keys(meas.t)) if (parseInt(key, 10) === s) delete meas.t[key];
+      if (isHidden(meas, s)) continue; // 3連符の拍の使わないマス
       let tok = null;
       if (pat.kind === 'stroke') {
         if (s % pat.res === 0) tok = pat.tokens[(s / pat.res) % pat.tokens.length];
@@ -529,7 +640,8 @@ function changeMeter(next) {
     bb.meter = next;
     const n = METERS[next].steps;
     for (const meas of bb.parts.flatMap((pp) => pp.measures)) {
-      for (const k of ['n', 'st', 'c', 'sc', 't']) for (const s of Object.keys(meas[k] || {})) if (parseInt(s, 10) >= n) delete meas[k][s];
+      for (const k of ['n', 'st', 'c', 'sc', 't', 'sl', 'tr']) for (const s of Object.keys(meas[k] || {})) if (parseInt(s, 10) >= n) delete meas[k][s];
+      if (METERS[next].beat !== 4) meas.tr = {};
     }
   });
   clampSel();
@@ -615,7 +727,7 @@ function printScoreHtml(ms) {
 }
 window.addEventListener('beforeprint', () => setPrintLayout(true));
 window.addEventListener('afterprint', () => setPrintLayout(false));
-const NAME_Y = 24, DG_Y = 36, STROKE_Y = 90, STR_Y0 = 114, STR_GAP = 13, BEAT_Y = 196, H = 204;
+const NAME_Y = 24, DG_Y = 36, STROKE_Y = 90, STR_Y0 = 114, STR_GAP = 13, BEAT_Y = 206, H = 214;
 const strY = (str) => STR_Y0 + (5 - str) * STR_GAP; // 1弦がいちばん上
 const colX = (s) => PADL + s * CW;
 
@@ -667,9 +779,14 @@ function measureSvg(mi, printWidth = '') {
   o += `<text class="num" x="2" y="10">${mi + 1}</text>`;
 
   // 列のクリック範囲（上のコード欄）
-  for (let s = 0; s < n; s++) o += `<rect class="col" data-m="${mi}" data-s="${s}" x="${colX(s)}" y="12" width="${CW}" height="${STR_Y0 - 20}"/>`;
+  for (let s = 0; s < n; s++) {
+    if (isHidden(meas, s)) continue;
+    const c = cellBox(meas, s);
+    o += `<rect class="col" data-m="${mi}" data-s="${s}" x="${c.x}" y="12" width="${c.w}" height="${STR_Y0 - 20}"/>`;
+  }
   if (isSelM && state.tool === 'chord') {
-    o += `<rect class="selcol" x="${colX(sel.s)}" y="12" width="${CW}" height="${STR_Y0 + STR_GAP * 5 + 6 - 12}"/>`;
+    const c = cellBox(meas, sel.s);
+    o += `<rect class="selcol" x="${c.x}" y="12" width="${c.w}" height="${STR_Y0 + STR_GAP * 5 + 6 - 12}"/>`;
   }
   o += `<rect class="ph" data-ph="${mi}" x="0" y="${STR_Y0 - 8}" width="${CW}" height="${STR_GAP * 5 + 16}" visibility="hidden"/>`;
 
@@ -690,7 +807,7 @@ function measureSvg(mi, printWidth = '') {
     const c = meas.c[s];
     const next = i + 1 < keys.length ? keys[i + 1] : n + 2;
     const room = (next - s) * CW;
-    const x = colX(s) + 4;
+    const x = cellBox(meas, s).x + 4;
     const selected = !printing && state.selChord && state.selChord.m === mi && state.selChord.s === s;
     o += `<g class="chordmark${selected ? ' selected' : ''}" data-cm="${mi}" data-cs="${s}">`;
     o += `<rect class="hit" x="${colX(s)}" y="12" width="${Math.min(room, 58)}" height="${STROKE_Y - 14}" rx="4"/>`;
@@ -699,9 +816,19 @@ function measureSvg(mi, printWidth = '') {
     o += `</g>`;
   });
 
+  // 3連符のかっこ（TAB の下。スラーや矢印と重ならないように）
+  if (tripletOK()) {
+    for (const k of Object.keys(meas.tr || {})) {
+      const b0 = Number(k);
+      const x1 = colX(b0) + 3, x2 = colX(b0 + 4) - 3, y = strY(0) + 13, mid = (x1 + x2) / 2;
+      o += `<path class="tuplet" d="M${x1} ${y - 4}V${y}H${mid - 5}M${mid + 5} ${y}H${x2}V${y - 4}"/>`;
+      o += `<text class="tuplettxt" x="${mid}" y="${y + 3}">3</text>`;
+    }
+  }
+
   // ストロークの矢印
   for (const [k, v] of Object.entries(meas.st)) {
-    const cx = colX(Number(k)) + CW / 2;
+    const cx = cellCx(meas, Number(k));
     const top = STROKE_Y - 8, bot = STROKE_Y + 8;
     if (v === 'D') {
       o += `<line class="arrow" x1="${cx}" y1="${top}" x2="${cx}" y2="${bot - 4}"/><path class="arrowhead" d="M${cx - 3.5} ${bot - 5}L${cx + 3.5} ${bot - 5}L${cx} ${bot + 1}Z"/>`;
@@ -712,7 +839,7 @@ function measureSvg(mi, printWidth = '') {
 
   // スタッカートの点（TAB の下）
   for (const k of Object.keys(meas.sc || {})) {
-    o += `<circle class="stac" cx="${colX(Number(k)) + CW / 2}" cy="${strY(0) + 6.5}" r="2"/>`;
+    o += `<circle class="stac" cx="${cellCx(meas, Number(k))}" cy="${strY(0) + 6.5}" r="2"/>`;
   }
 
   // ハンマリング・プリング（弧と H / P）、スライド（前の音からの斜めの線と S）、グリッサンド（音の前後の短い斜めの線）
@@ -720,7 +847,7 @@ function measureSvg(mi, printWidth = '') {
     const [s2, str] = key.split('_').map(Number);
     const v = meas.n[s2]?.[str];
     if (v == null) continue;
-    const x2 = colX(s2) + CW / 2;
+    const x2 = cellCx(meas, s2);
     const ys = strY(str);
     if (kind === 'gu') {
       o += `<line class="slide" x1="${x2 - CW * 0.62}" y1="${ys + 4.5}" x2="${x2 - 6}" y2="${ys - 1.5}"/>`;
@@ -731,8 +858,14 @@ function measureSvg(mi, printWidth = '') {
       continue;
     }
     const prev = prevNote(mi, s2, str);
-    const x1 = prev && prev.m === mi ? colX(prev.s) + CW / 2 : 2;
+    const x1 = prev && prev.m === mi ? cellCx(meas, prev.s) : 2;
     const mid = (x1 + x2) / 2;
+    if (kind === 'ti') {
+      // タイ：同じ音を弧でつなぐ（あとの音はかっこ付き）
+      const y = ys + 6.5;
+      o += `<path class="slur" d="M${x1 + 4} ${y}Q${mid} ${y + 6} ${x2 - 4} ${y}"/>`;
+      continue;
+    }
     if (kind === 's') {
       const up = prev ? v > prev.fret : true;
       const d = up ? 1 : -1;
@@ -745,29 +878,49 @@ function measureSvg(mi, printWidth = '') {
     o += `<text class="slurtxt" x="${mid}" y="${y - 5}">${kind === 'h' ? 'H' : 'P'}</text>`;
   }
 
+  // スラー（始めの音から終わりの音までの大きな弧）
+  for (const sl of slursOn(P(b).measures, mi)) {
+    const a0 = mi * n, y = strY(sl.str) - 7;
+    const xs = sl.a >= a0 ? cellCx(meas, sl.a - a0) + 3 : 0;
+    const xe = sl.b < a0 + n ? cellCx(meas, sl.b - a0) - 3 : W;
+    const lift = Math.min(14, 6 + (xe - xs) / 40);
+    o += `<path class="slur" d="M${xs} ${y}Q${(xs + xe) / 2} ${y - lift} ${xe} ${y}"/>`;
+  }
+
   // フレットの数字
   for (const [k, col] of Object.entries(meas.n)) {
-    const cx = colX(Number(k)) + CW / 2;
+    if (isHidden(meas, Number(k))) continue;
+    const cx = cellCx(meas, Number(k));
     col.forEach((v, str) => {
       if (v == null) return;
       const y = strY(str);
       if (v === 'x') {
         o += `<rect class="fretbg" x="${cx - 5}" y="${y - 5}" width="10" height="10"/><line class="mutex" x1="${cx - 3.5}" y1="${y - 3.5}" x2="${cx + 3.5}" y2="${y + 3.5}"/><line class="mutex" x1="${cx - 3.5}" y1="${y + 3.5}" x2="${cx + 3.5}" y2="${y - 3.5}"/>`;
       } else {
-        const w = String(v).length > 1 ? 16 : 10;
-        o += `<rect class="fretbg" x="${cx - w / 2}" y="${y - 6}" width="${w}" height="12"/><text class="fret" x="${cx}" y="${y}">${v}</text>`;
+        const tied = meas.t?.[`${k}_${str}`] === 'ti';
+        const label = tied ? `(${v})` : String(v);
+        const w = label.length > 1 ? 6 + label.length * 6 : 10;
+        o += `<rect class="fretbg" x="${cx - w / 2}" y="${y - 6}" width="${w}" height="12"/><text class="fret${tied ? ' tied' : ''}" x="${cx}" y="${y}">${label}</text>`;
       }
     });
   }
 
   // 選んでいるマス
   if (isSelM && state.tool === 'tab') {
-    o += `<rect class="selcell" x="${colX(sel.s) + 2}" y="${strY(sel.str) - 7}" width="${CW - 4}" height="14" rx="3"/>`;
+    const c = cellBox(meas, sel.s);
+    o += `<rect class="selcell" x="${c.x + 2}" y="${strY(sel.str) - 7}" width="${c.w - 4}" height="14" rx="3"/>`;
+  }
+  // スラーの始めの音（「ここまで」を待っているとき）
+  const ss = state.slurStart;
+  if (!printing && ss && ss.songPart === `${state.currentId}:${state.part}` && Math.floor(ss.g / n) === mi) {
+    o += `<rect class="slurstart" x="${cellBox(meas, ss.g % n).x + 1}" y="${strY(ss.str) - 8}" width="${cellBox(meas, ss.g % n).w - 2}" height="16" rx="4"/>`;
   }
   // マスのクリック範囲
   for (let s = 0; s < n; s++) {
+    if (isHidden(meas, s)) continue;
+    const c = cellBox(meas, s);
     for (let str = 0; str < 6; str++) {
-      o += `<rect class="cell" data-m="${mi}" data-s="${s}" data-str="${str}" x="${colX(s)}" y="${strY(str) - STR_GAP / 2}" width="${CW}" height="${STR_GAP}"/>`;
+      o += `<rect class="cell" data-m="${mi}" data-s="${s}" data-str="${str}" x="${c.x}" y="${strY(str) - STR_GAP / 2}" width="${c.w}" height="${STR_GAP}"/>`;
     }
   }
   return o + '</svg>';
@@ -906,6 +1059,19 @@ function tabPanel() {
       グリッサンドは、選んだ音に下から滑り込む／弾いたあと下へ滑らせて消します。
       キーボード：<kbd>H</kbd> <kbd>P</kbd> <kbd>/</kbd> スライド・<kbd>G</kbd> 下から入る・<kbd>Shift</kbd>+<kbd>G</kbd> 下へ抜く</p>
     <p class="hint" id="panel-msg" role="status" hidden></p></div>`;
+
+  const meas0 = pt().measures[m];
+  const isTie = meas0.t?.[`${s}_${state.sel.str}`] === 'ti';
+  const isTri = tripletOK() && !!meas0.tr?.[s - (s % 4)];
+  const ss = state.slurStart && state.slurStart.songPart === `${state.currentId}:${state.part}` ? state.slurStart : null;
+  const inSl = slursOn(pt().measures, m).some((sl) => sl.str === state.sel.str && gOf(m, s) >= sl.a && gOf(m, s) <= sl.b);
+  h += `<div class="sec"><div class="sec-h">タイ・スラー・3連符</div><div class="seg">
+    <button type="button" data-legato="ti" aria-pressed="${isTie}">⌒ タイ（前の同じ音とつなぐ）</button>
+    <button type="button" data-act="slur" aria-pressed="${!!ss}">${ss ? '⌒ スラー：ここまで' : '⌒ スラー：ここから'}</button>
+    ${ss || inSl ? `<button type="button" data-act="slur-off">${ss ? 'スラーをやめる' : 'スラーを外す'}</button>` : ''}
+    <button type="button" data-act="triplet" aria-pressed="${isTri}"${tripletOK() ? '' : ' disabled'}>3 この拍を3連符に</button></div>
+    <p class="hint">タイは、同じ弦の前の同じフレットの音から伸ばします（<kbd>T</kbd>）。スラーは、始めの音を選んで「ここから」、終わりの音を選んで「ここまで」。
+      3連符は、選んでいる拍を3等分します（その拍の4つ目のマスは使いません）。</p></div>`;
 
   const stac = !!pt().measures[m].sc?.[s];
   h += `<div class="sec"><div class="sec-h">スタッカート <small>この位置の音を短く切る（キーボード <kbd>S</kbd>）</small></div><div class="seg">
@@ -1110,14 +1276,16 @@ function playStep(part, voice, s, n, dt) {
   strings.forEach((str, i) => {
     const v = col[str];
     const mark = meas.t?.[`${s}_${str}`];
-    const when = play.next + i * gap;
+    const when = play.next + tripletShift(meas, s, dt) + i * gap;
+    // タイ：前の音をそのまま伸ばす（弾き直さない）
+    if (mark === 'ti') return;
     if (mark === 's' && v !== 'x') {
       // スライド：前の音を弾き直さずに、音程をずらしていく
       const prev = prevNote(mi, s, str, ms);
       if (prev && audio.slide(str, v - prev.fret, Math.max(when - Math.min(0.12, dt * 0.8), audio.now()), when, false, voice)) return;
     }
     // ハンマリング・プリングは弾かずに鳴らすので、小さく柔らかく
-    const legato = mark === 'h' || mark === 'p';
+    const legato = mark === 'h' || mark === 'p' || (v !== 'x' && inSlur(ms, play.g, str));
     audio.pluck(str, midiOf(str, v === 'x' ? 0 : v, capo), when, v === 'x',
       vel * (dir ? 1 - i * 0.03 : 1) * (legato ? 0.62 : 1), legato ? 0.018 : 0.008,
       mark === 'gu' ? { from: -5, time: Math.min(0.14, dt * 1.2) } : null, voice);
@@ -1131,7 +1299,7 @@ function playStep(part, voice, s, n, dt) {
       if (ms[Math.floor(g2 / n)]?.n[g2 % n]) break;
       k++;
     }
-    audio.damp(play.next + strings.length * gap + Math.max(0.07, k * dt * 0.5), voice);
+    audio.damp(play.next + tripletShift(meas, s, dt) + strings.length * gap + Math.max(0.07, k * dt * 0.5), voice);
   }
 }
 
@@ -1187,7 +1355,7 @@ function toText() {
           const lg = meas.t?.[`${s}_${5 - r}`];
           const prevF = lg === 's' ? prevNote(i + group.indexOf(meas), s, 5 - r)?.fret : null;
           const mark = lg === 's' ? (prevF != null && v < prevF ? '\\' : '/') : lg === 'gu' ? '/' : lg === 'h' || lg === 'p' ? lg : '';
-          const txt = v == null ? '' : mark + String(v) + (lg === 'gd' ? '\\' : '');
+          const txt = v == null ? '' : lg === 'ti' ? `(${v})` : mark + String(v) + (lg === 'gd' ? '\\' : '');
           rows[r] += (txt + '---').slice(0, W);
         }
       }
@@ -1338,6 +1506,9 @@ $('panel-body').addEventListener('click', (e) => {
   else if (d.act === 'more') { state.pick.showAll = !state.pick.showAll; renderPanel(); }
   else if (d.act === 'del-chord') removeChordMark();
   else if (d.act === 'stac') toggleStaccato();
+  else if (d.act === 'slur') slurStep();
+  else if (d.act === 'slur-off') { if (state.slurStart) { state.slurStart = null; renderAll(); } else removeSlur(); }
+  else if (d.act === 'triplet') toggleTriplet();
   else if (d.legato != null) setLegato(d.legato);
   else if (d.act === 'stac-all') { state.rhythm.stac = !state.rhythm.stac; savePrefs(); renderPanel(); }
 });
@@ -1376,6 +1547,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'g' || e.key === 'G') { e.preventDefault(); typing = null; setLegato(e.shiftKey ? 'gd' : 'gu'); return; }
   if (e.key === 'h' || e.key === 'H') { e.preventDefault(); typing = null; setLegato('h'); return; }
   if (e.key === 'p' || e.key === 'P') { e.preventDefault(); typing = null; setLegato('p'); return; }
+  if (e.key === 't' || e.key === 'T') { e.preventDefault(); typing = null; setLegato('ti'); return; }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); typing = null; toggleStaccato(); return; }
   if (e.key === 'x' || e.key === 'X') { e.preventDefault(); typing = null; setFret(m, s, str, 'x'); return; }
   if (e.key === 'Backspace' || e.key === 'Delete') {

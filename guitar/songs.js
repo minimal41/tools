@@ -17,7 +17,7 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 
 /* ---------- 曲データ ---------- */
 
-export function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {} }; }
+export function emptyMeasure() { return { n: {}, st: {}, c: {}, sc: {}, t: {}, sl: {}, tr: {} }; }
 
 export function newPart(name, capo = 0, count = 4) {
   return { name, capo: Number(capo) || 0, measures: Array.from({ length: count }, emptyMeasure) };
@@ -41,7 +41,7 @@ export function normalizeBody(b) {
   const out = newBody(b || {});
   out.nameMode = b?.nameMode === 'sound' ? 'sound' : 'shape';
   const fixMeasures = (ms) => (Array.isArray(ms) && ms.length
-    ? ms.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {} }))
+    ? ms.map((m) => ({ n: m?.n || {}, st: m?.st || {}, c: m?.c || {}, sc: m?.sc || {}, t: m?.t || {}, sl: m?.sl || {}, tr: m?.tr || {} }))
     : Array.from({ length: 4 }, emptyMeasure));
   if (Array.isArray(b?.parts) && b.parts.length) {
     out.parts = b.parts.map((pp, i) => ({ name: pp?.name || `パート${i + 1}`, capo: Number(pp?.capo) || 0, measures: fixMeasures(pp?.measures) }));

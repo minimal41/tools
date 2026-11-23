@@ -115,6 +115,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, .cell:focus-vis
 .measure .mutex { stroke: var(--ink); stroke-width: 1.1; }
 .measure .stac { fill: var(--ink); }
 .measure .slur { fill: none; stroke: var(--ink); stroke-width: 1; }
+.measure .tuplet { fill: none; stroke: var(--ink); stroke-width: 1; }
+.measure .tuplettxt { fill: var(--ink); font-size: 9px; font-weight: 700; font-style: italic; text-anchor: middle; font-family: var(--font-num); }
+.measure .fret.tied { font-weight: 500; }
+.measure .slurstart { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 3 2; }
 .measure .slide { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; }
 .measure .slurtxt { fill: var(--ink); font-size: 7.5px; font-weight: 700; text-anchor: middle; font-family: var(--font-num); }
 .measure .bassmark { fill: var(--muted); font-size: 9px; text-anchor: middle; font-family: var(--font-num); }
@@ -239,7 +243,7 @@ dialog textarea { width: 100%; min-height: 260px; font-family: var(--font-num); 
 @media print {
   :root, :root[data-theme="dark"] { --paper: #fff; --ink: #000; --staff: #666; --line: #ccc; --muted: #555; color-scheme: light; }
   body { background: #fff; padding: 0; }
-  .home, header.top, .playbar, .note, .songbar, .panel, .add-measure, .measure .selcell, .measure .selcol, .measure .ph { display: none !important; }
+  .home, header.top, .playbar, .note, .songbar, .panel, .add-measure, .measure .selcell, .measure .selcol, .measure .slurstart, .measure .ph { display: none !important; }
   .main { display: block; }
   .sheet { border: 0; padding: 0; }
   /* 小節は右へ1px はみ出す並べ方なので、右端の小節線が紙の端で切れないように少しあける */
