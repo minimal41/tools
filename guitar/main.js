@@ -641,6 +641,59 @@ function selectChordMark(m, s) {
 function addMeasure() {
   edit((b) => { P(b).measures.push(emptyMeasure()); });
 }
+/*
+ * 小節のコピーと複製
+ *   小節番号を押す … その小節をコピー（Shift を押しながら押すと、前にコピーした小節からそこまでをまとめて）
+ *   Ctrl+V か「複製」 … 選んでいる小節の次に、コピーした小節を入れる
+ * コピーはこのブラウザに覚えるので、ほかの曲やパートにも貼り付けられる（拍子が同じとき）
+ */
+const CLIP_KEY = 'tools.guitarTabs.clipboard';
+let clip = null; // { meter, measures, from: { song, part, a, b } }
+try { clip = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch { clip = null; }
+
+function copyMeasures(a, b) {
+  if (a > b) [a, b] = [b, a];
+  const ms = pt().measures.slice(a, b + 1);
+  clip = { meter: body().meter, measures: structuredClone(ms), from: { song: state.currentId, part: state.part, a, b } };
+  try { localStorage.setItem(CLIP_KEY, JSON.stringify(clip)); } catch { /* 大きすぎるときは、このページの中だけで使う */ }
+  renderScore();
+  renderClipButton();
+  toast(a === b ? `${a + 1}小節目をコピーしました。Ctrl+V か「複製」で、選んでいる小節の次に入れます。` : `${a + 1}〜${b + 1}小節目をコピーしました。Ctrl+V か「複製」で、選んでいる小節の次に入れます。`);
+}
+
+function pasteMeasures() {
+  // コピーが無ければ、選んでいる小節をそのまま複製する
+  const src = clip?.measures?.length ? clip : { meter: body().meter, measures: [structuredClone(pt().measures[state.sel.m])] };
+  if (src.meter !== body().meter) {
+    toast(`コピーした小節は ${src.meter} です。この曲（${body().meter}）には貼り付けられません。`);
+    return;
+  }
+  const at = state.sel.m + 1;
+  edit((b) => { P(b).measures.splice(at, 0, ...structuredClone(src.measures)); });
+  state.sel = { m: at, s: 0, str: state.sel.str };
+  state.selChord = null;
+  renderAll();
+  toast(`${at + 1}小節目に${src.measures.length > 1 ? `${src.measures.length}小節を` : ''}複製しました。`);
+}
+
+function renderClipButton() {
+  const btn = $('paste-measure');
+  if (!btn) return;
+  const n = clip?.measures?.length || 0;
+  btn.textContent = n
+    ? `⧉ 複製：コピーした${n > 1 ? `${n}小節` : '小節'}を選択の次に入れる（Ctrl+V）`
+    : '⧉ 選択した小節を次に複製（Ctrl+V）';
+}
+
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+
 function insertMeasure() {
   edit((b) => { P(b).measures.splice(state.sel.m, 0, emptyMeasure()); });
 }
@@ -802,7 +855,11 @@ function measureSvg(mi, printWidth = '') {
   const sel = state.sel;
   const isSelM = !printing && sel.m === mi; // 印刷では選んでいる印を描かない
   let o = `<svg class="measure${printWidth ? ' print-' + printWidth : ''}" data-m="${mi}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="group" aria-label="${mi + 1}小節目">`;
-  o += `<text class="num" x="2" y="10">${mi + 1}</text>`;
+  const cf = clip?.from;
+  const copied = !printing && cf && cf.song === state.currentId && cf.part === state.part && mi >= cf.a && mi <= cf.b;
+  o += `<g class="numbox${copied ? ' copied' : ''}" data-num="${mi}"><title>押すとこの小節をコピー（Shift で範囲）</title>`
+    + `<rect class="numhit" x="0" y="0" width="${String(mi + 1).length * 6.5 + 8}" height="13" rx="3"/>`
+    + `<text class="num" x="2" y="10">${mi + 1}</text></g>`;
 
   // 列のクリック範囲（上のコード欄）
   for (let s = 0; s < n; s++) {
@@ -1474,6 +1531,8 @@ $('play').addEventListener('click', () => (play.on ? stop() : start()));
 $('print').addEventListener('click', () => window.print());
 $('delete-song').addEventListener('click', deleteSong);
 $('add-measure').addEventListener('click', addMeasure);
+$('paste-measure').addEventListener('click', pasteMeasures);
+renderClipButton();
 $('insert-measure').addEventListener('click', insertMeasure);
 $('remove-measure').addEventListener('click', removeMeasure);
 
@@ -1492,6 +1551,17 @@ $('tab-chord').addEventListener('click', () => { state.tool = 'chord'; savePrefs
 
 // 楽譜のクリック
 $('score').addEventListener('click', (e) => {
+  const num = e.target.closest('[data-num]');
+  if (num) {
+    const mi = Number(num.dataset.num);
+    const cf = clip?.from;
+    const sameSheet = cf && cf.song === state.currentId && cf.part === state.part;
+    if (e.shiftKey && sameSheet) copyMeasures(cf.a, mi); else copyMeasures(mi, mi);
+    state.sel = { m: mi, s: 0, str: state.sel.str };
+    state.selChord = null;
+    renderAll();
+    return;
+  }
   const cm = e.target.closest('[data-cm]');
   if (cm) {
     selectChordMark(Number(cm.dataset.cm), Number(cm.dataset.cs));
@@ -1574,6 +1644,8 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteMeasures(); return; }
+  if (mod && e.key.toLowerCase() === 'c' && !String(window.getSelection?.() || '')) { e.preventDefault(); copyMeasures(state.sel.m, state.sel.m); return; }
   if (mod || e.altKey) return;
   if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); if (play.on) stop(); else start(); return; }
   if (e.key === 'ArrowLeft') { e.preventDefault(); moveSel(-1); return; }
