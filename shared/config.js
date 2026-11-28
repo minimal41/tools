@@ -27,4 +27,18 @@ export const firebaseConfig = {
  * ページを GitHub Pages など別の場所に置く場合は、Vercel のアドレスを書く。
  *   例: 'https://tools-xxxx.vercel.app'
  */
-export const apiBase = '';
+export const apiBase = isAndroidApp() ? appApiBase() : '';
+
+/*
+ * ■ Android アプリ（app/ で作る APK）
+ *
+ * アプリの中ではページが端末の中（https://localhost）から開かれるので、
+ * 保存用の API は公開している Vercel のアドレスへ送る。
+ */
+function appApiBase() {
+  return 'https://tools-three-bay-66.vercel.app';
+}
+
+function isAndroidApp() {
+  return typeof window !== 'undefined' && !!window.androidBridge && location.hostname === 'localhost';
+}

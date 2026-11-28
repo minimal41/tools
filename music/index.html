@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)">
+<title>Music</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 6.2v11.6a.9.9 0 0 0 1.4.75l8.3-5.8a.9.9 0 0 0 0-1.5L6.4 5.45A.9.9 0 0 0 5 6.2z" fill="currentColor"/><rect x="16.5" y="5" width="2.6" height="14" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 6.2v11.6a.9.9 0 0 1-1.4.75l-8.3-5.8a.9.9 0 0 1 0-1.5l8.3-5.8A.9.9 0 0 1 19 6.2z" fill="currentColor"/><rect x="4.9" y="5" width="2.6" height="14" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.5c2 0 3.2.9 4.4 2.6l2.2 3.3C14.3 14.7 15.5 17 17.6 17H21M3 17h3.5c1.6 0 2.6-.6 3.5-1.7M14 8.7c.9-1.1 2-1.7 3.6-1.7H21M18.5 4.5 21 7l-2.5 2.5M18.5 14.5 21 17l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 11V9.5A2.5 2.5 0 0 1 6.5 7H19m-3-3 3 3-3 3M20 13v1.5a2.5 2.5 0 0 1-2.5 2.5H5m3 3-3-3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-repeat1" viewBox="0 0 24 24"><path d="M4 11V9.5A2.5 2.5 0 0 1 6.5 7H19m-3-3 3 3-3 3M20 13v1.5a2.5 2.5 0 0 1-2.5 2.5H5m3 3-3-3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.2 10.6 12.4 10v4.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 17.5V6.2a1 1 0 0 1 .78-.98l8-1.8A1 1 0 0 1 19 4.4v10.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="6.8" cy="17.6" r="2.4" fill="currentColor"/><circle cx="16.8" cy="15.2" r="2.4" fill="currentColor"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="top-row">
+    <a class="home" href="../index.html">← Tools</a>
+    <div class="top-actions">
+      <button type="button" class="icon-btn" id="addBtn" aria-label="曲を追加" title="曲を追加"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <div class="menu" id="addMenu" hidden>
+        <button type="button" id="addFiles">ファイルを選んで追加</button>
+        <button type="button" id="addDir">フォルダごと追加</button>
+        <button type="button" id="clearLib" class="danger">保存した曲をすべて削除</button>
+      </div>
+    </div>
+  </div>
+  <h1>Music</h1>
+  <label class="search">
+    <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+    <input type="search" id="search" placeholder="曲名・アーティスト・アルバムで検索" autocomplete="off" enterkeyhint="search">
+  </label>
+  <nav class="tabs" aria-label="表示">
+    <button type="button" data-tab="songs" aria-selected="true">曲</button>
+    <button type="button" data-tab="albums" aria-selected="false">アルバム</button>
+    <button type="button" data-tab="artists" aria-selected="false">アーティスト</button>
+  </nav>
+</header>
+
+<main id="view" class="main"></main>
+<p class="progress" id="progress" hidden></p>
+
+<!-- ミニプレーヤー -->
+<div class="mini" id="mini" hidden role="button" tabindex="0" aria-label="再生画面を開く">
+  <div class="mini-bar"><span id="miniBar"></span></div>
+  <div class="art sm" id="miniArt"></div>
+  <div class="meta">
+    <span class="name" id="miniTitle"></span>
+    <span class="sub" id="miniSub"></span>
+  </div>
+  <button type="button" class="icon-btn" id="miniPlay" aria-label="再生"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+  <button type="button" class="icon-btn" id="miniNext" aria-label="次の曲"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+</div>
+
+<!-- 再生画面 -->
+<section class="player" id="player" hidden aria-label="再生中">
+  <div class="player-inner">
+    <div class="player-top">
+      <button type="button" class="icon-btn" id="pClose" aria-label="閉じる"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
+      <span class="player-label">再生中</span>
+      <span class="icon-btn-spacer"></span>
+    </div>
+    <div class="art hero" id="pArt"></div>
+    <div class="now">
+      <h2 id="pTitle"></h2>
+      <button type="button" class="link" id="pArtist"></button>
+      <button type="button" class="link album-link" id="pAlbum"></button>
+    </div>
+    <div class="seek">
+      <input type="range" id="pSeek" min="0" max="1" value="0" step="1" aria-label="再生位置">
+      <div class="times"><span id="pPos">0:00</span><span id="pDur">0:00</span></div>
+    </div>
+    <div class="controls">
+      <button type="button" class="icon-btn toggle" id="pShuffle" aria-label="シャッフル" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-shuffle"/></svg></button>
+      <button type="button" class="icon-btn big" id="pPrev" aria-label="前の曲"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
+      <button type="button" class="icon-btn play" id="pPlay" aria-label="再生"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+      <button type="button" class="icon-btn big" id="pNext" aria-label="次の曲"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+      <button type="button" class="icon-btn toggle" id="pRepeat" aria-label="リピートなし" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
+    </div>
+    <h3 class="section-title" id="pQueueHead">再生キュー</h3>
+    <div class="songs queue" id="pQueue"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<input type="file" id="filePick" accept="audio/*,.mp3,.m4a,.flac,.ogg,.opus,.wav" multiple hidden>
+<input type="file" id="dirPick" webkitdirectory multiple hidden>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

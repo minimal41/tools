@@ -1,0 +1,8 @@
+{
+  "appId": "com.minimal41.tools",
+  "appName": "Tools",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

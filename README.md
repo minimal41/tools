@@ -6,9 +6,64 @@
 | [スライド](slides/) | 発表用スライドの作成（ログイン中は Vercel、未ログインはブラウザに保存） |
 | [チェックリスト](checklist/) | チェックリストの作成（ログイン中はアカウント、未ログインはブラウザに保存） |
 | [ギター譜](guitar/) | 保存した曲の一覧（`guitar/index.html`）から、曲ごとのページ（`guitar/edit.html?id=…`）を開いて編集。TAB 譜の作成。コード・押さえ方・リズム（ストローク / アルペジオ）を選んで流し込み、カポ・再生・印刷に対応（ログイン中はアカウント、未ログインはブラウザに保存） |
+| [Music](music/) | スマホの音楽（MP3 など）をオフラインで再生。曲・アルバム・アーティスト別の一覧、ID3 タグの曲名・アーティスト・アルバム・ジャケット表示、アルバムだけの再生、バックグラウンド再生（Android アプリでは端末の音楽をすべて自動で表示） |
 | [席替え](change-seats/) | 座席表の作成（直近3回の席替えをブラウザに保存） |
 | [Making Site](makingsite/) | パーツを組み立ててホームページを作成（[minimal41/makingsite](https://github.com/minimal41/makingsite) から取り込み） |
 | [Sheetbase](sheetbase/) | Google スプレッドシートをデータベースにするサーバー |
+
+## Android アプリ（APK）
+
+Tools 全体を Android アプリにしたものを `app/` で作ります（[Capacitor](https://capacitorjs.com/)）。
+ページはアプリの中に入っているので、通信がなくても開けます（ログインと保存は通信が必要。API は `shared/config.js` の `appApiBase()` のアドレスへ送る）。
+
+### ダウンロード
+
+- `main` に入ると GitHub Actions（`.github/workflows/android.yml`）が APK を作り、リリース **`android-latest`** の `tools.apk` を差し替えます。
+  スマホで `https://github.com/minimal41/tools/releases/tag/android-latest` を開いてダウンロードし、インストールしてください
+  （初回は「提供元不明のアプリ」のインストールを許可する必要があります）。
+- ほかのブランチでは、Actions の実行結果の「tools-apk」から APK を取れます。
+
+### 署名（上書きインストールのために一度だけ設定）
+
+Secrets が無いと debug 版になり、ビルドのたびに鍵が変わるので、更新するには一度アンインストールが必要です。
+同じ鍵で署名し続けるには、手元で鍵を作って GitHub の **Settings → Secrets and variables → Actions** に登録します。
+
+```sh
+keytool -genkeypair -keystore tools.keystore -alias tools -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 tools.keystore   # 出てきた文字列を ANDROID_KEYSTORE_BASE64 に
+```
+
+| Secret | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 上の `base64` の結果 |
+| `ANDROID_KEYSTORE_PASSWORD` | 鍵ストアのパスワード |
+| `ANDROID_KEY_ALIAS` | `tools` |
+| `ANDROID_KEY_PASSWORD` | 鍵のパスワード（鍵ストアと同じなら省略可） |
+
+鍵ファイル（`tools.keystore`）はリポジトリに入れず、なくさないよう保管してください（なくすと同じアプリとして更新できなくなります）。
+
+### 手元でビルドする
+
+JDK 21 と Android SDK（`ANDROID_HOME`）が必要です。
+
+```sh
+cd app
+npm install
+npm run apk        # → app/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`npm run sync` はページ（リポジトリ直下のファイル）を `app/www` にコピーしてアプリに入れます。ページを変えたらビルドし直してください。
+
+### Music（音楽プレーヤー）のしくみ
+
+| | Android アプリ | ブラウザ |
+| --- | --- | --- |
+| 曲の一覧 | 端末の音楽ファイルをすべて自動で表示（`MusicLibraryPlugin.java`、MediaStore。初回に「音楽とオーディオ」の許可が必要） | 「＋」から選んだファイル・フォルダをブラウザ（IndexedDB）に保存 |
+| タグ | Android がファイルの ID3 タグから読んだ曲名・アーティスト・アルバム・トラック番号 | `music/id3.js` で ID3v1 / v2.2〜2.4 を読む（Shift_JIS のタグにも対応） |
+| ジャケット | 曲に埋め込まれた画像（APIC）を取り出してアプリのキャッシュに保存 | 同じく APIC をブラウザに保存 |
+| 再生 | 再生サービス（`PlaybackService.java`、Media3）。画面を消しても・ほかのアプリを開いても続き、通知・ロック画面・イヤホンのボタンで操作できる | `<audio>` と Media Session |
+
+アルバムを開いて「再生」「シャッフル」を押すと、そのアルバムの曲だけを再生します。アプリに戻ったときは、新しくダウンロードした曲を自動で読み込み直します（右上の更新ボタンでも読み込めます）。
 
 ## アカウントとデータ保存
 
