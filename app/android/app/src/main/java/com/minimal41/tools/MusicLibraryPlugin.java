@@ -1,6 +1,10 @@
 package com.minimal41.tools;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.PendingIntent;
+import android.app.RecoverableSecurityException;
+import android.content.IntentSender;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.database.Cursor;
@@ -11,6 +15,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Size;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -23,6 +30,8 @@ import com.getcapacitor.annotation.PermissionCallback;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -37,13 +46,28 @@ import java.util.concurrent.Executors;
     permissions = {
         @Permission(alias = "audio", strings = { Manifest.permission.READ_MEDIA_AUDIO }),
         @Permission(alias = "storage", strings = { Manifest.permission.READ_EXTERNAL_STORAGE }),
-        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }),
+        // Android 9 以前で曲のファイルを削除するとき
+        @Permission(alias = "write", strings = { Manifest.permission.WRITE_EXTERNAL_STORAGE })
     }
 )
 public class MusicLibraryPlugin extends Plugin {
 
     private static final int ART_SIZE = 600;
     private final ExecutorService worker = Executors.newFixedThreadPool(2);
+
+    // 削除の確認画面（Android が出す「このファイルを削除しますか？」）
+    private ActivityResultLauncher<IntentSenderRequest> deleteLauncher;
+    private PluginCall pendingDelete;
+    private List<Uri> pendingUris;
+
+    @Override
+    public void load() {
+        deleteLauncher = getActivity().registerForActivityResult(
+            new ActivityResultContracts.StartIntentSenderForResult(),
+            (result) -> onDeleteConfirmed(result.getResultCode() == Activity.RESULT_OK)
+        );
+    }
 
     private String audioAlias() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "audio" : "storage";
@@ -222,6 +246,108 @@ public class MusicLibraryPlugin extends Plugin {
             if (files != null) for (File f : files) f.delete();
             call.resolve();
         });
+    }
+
+    /**
+     * 曲のファイルを端末から削除する。uris: [content:// の URI]
+     * Android 11 以降は Android の確認画面が出て、そこで「許可」されたときだけ消える。
+     * 結果: { deleted: true / false }
+     */
+    @PluginMethod
+    public void delete(PluginCall call) {
+        JSArray arr = call.getArray("uris", new JSArray());
+        List<Uri> uris = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            String u = arr.optString(i, "");
+            if (!u.isEmpty()) uris.add(Uri.parse(u));
+        }
+        if (uris.isEmpty()) {
+            call.reject("削除する曲がありません。");
+            return;
+        }
+        if (pendingDelete != null) {
+            call.reject("ほかの削除の確認中です。");
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                PendingIntent pi = MediaStore.createDeleteRequest(getContext().getContentResolver(), uris);
+                askUser(call, uris, pi.getIntentSender());
+            } catch (Exception e) {
+                call.reject("削除できませんでした: " + e.getMessage(), e);
+            }
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && getPermissionState("write") != PermissionState.GRANTED) {
+            pendingUris = uris;
+            requestPermissionForAlias("write", call, "writePermissionCallback");
+            return;
+        }
+        deleteDirect(call, uris);
+    }
+
+    @PermissionCallback
+    private void writePermissionCallback(PluginCall call) {
+        List<Uri> uris = pendingUris;
+        pendingUris = null;
+        if (getPermissionState("write") != PermissionState.GRANTED || uris == null) {
+            call.reject("ファイルを削除する許可がありません。", "NO_PERMISSION");
+            return;
+        }
+        deleteDirect(call, uris);
+    }
+
+    private void askUser(PluginCall call, List<Uri> uris, IntentSender sender) {
+        pendingDelete = call;
+        pendingUris = uris;
+        deleteLauncher.launch(new IntentSenderRequest.Builder(sender).build());
+    }
+
+    private void onDeleteConfirmed(boolean ok) {
+        PluginCall call = pendingDelete;
+        List<Uri> uris = pendingUris;
+        pendingDelete = null;
+        pendingUris = null;
+        if (call == null) return;
+        if (!ok) {
+            JSObject r = new JSObject();
+            r.put("deleted", false);
+            call.resolve(r);
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // 確認画面で許可されると Android が削除済み
+            JSObject r = new JSObject();
+            r.put("deleted", true);
+            call.resolve(r);
+        } else {
+            // Android 10：許可をもらったので、もう一度削除する
+            deleteDirect(call, uris);
+        }
+    }
+
+    /** Android 10 以前：直接削除（Android 10 でほかのアプリのファイルなら確認画面を出す） */
+    private void deleteDirect(PluginCall call, List<Uri> uris) {
+        ContentResolver resolver = getContext().getContentResolver();
+        for (int i = 0; i < uris.size(); i++) {
+            try {
+                resolver.delete(uris.get(i), null, null);
+            } catch (SecurityException e) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e instanceof RecoverableSecurityException) {
+                    IntentSender sender = ((RecoverableSecurityException) e).getUserAction().getActionIntent().getIntentSender();
+                    askUser(call, new ArrayList<>(uris.subList(i, uris.size())), sender);
+                    return;
+                }
+                call.reject("削除できませんでした: " + e.getMessage(), e);
+                return;
+            } catch (Exception e) {
+                call.reject("削除できませんでした: " + e.getMessage(), e);
+                return;
+            }
+        }
+        JSObject r = new JSObject();
+        r.put("deleted", true);
+        call.resolve(r);
     }
 
     static File artFile(android.content.Context ctx, String key) {

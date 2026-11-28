@@ -190,6 +190,47 @@ public class MusicPlayerPlugin extends Plugin {
             .build();
     }
 
+    /** 再生キューに足す。tracks: [...], next: true なら今の曲の次、false なら最後 */
+    @PluginMethod
+    public void addToQueue(PluginCall call) {
+        JSArray tracks = call.getArray("tracks", new JSArray());
+        boolean next = call.getBoolean("next", false);
+        List<MediaItem> items = new ArrayList<>();
+        for (int i = 0; i < tracks.length(); i++) {
+            JSONObject t = tracks.optJSONObject(i);
+            if (t != null) items.add(toItem(t));
+        }
+        if (items.isEmpty()) {
+            call.reject("曲がありません。");
+            return;
+        }
+        withController(call, (c) -> {
+            if (c.getMediaItemCount() == 0) {
+                c.setMediaItems(items);
+                c.prepare();
+            } else if (next) {
+                c.addMediaItems(c.getCurrentMediaItemIndex() + 1, items);
+            } else {
+                c.addMediaItems(items);
+            }
+            done(call, c);
+        });
+    }
+
+    /** 再生キューから外す。ids: [曲の id] */
+    @PluginMethod
+    public void removeFromQueue(PluginCall call) {
+        JSArray arr = call.getArray("ids", new JSArray());
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (int i = 0; i < arr.length(); i++) ids.add(arr.optString(i, ""));
+        withController(call, (c) -> {
+            for (int i = c.getMediaItemCount() - 1; i >= 0; i--) {
+                if (ids.contains(c.getMediaItemAt(i).mediaId)) c.removeMediaItem(i);
+            }
+            done(call, c);
+        });
+    }
+
     @PluginMethod
     public void play(PluginCall call) {
         withController(call, (c) -> {

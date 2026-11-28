@@ -154,6 +154,12 @@ button:focus-visible, .mini:focus-visible, select:focus-visible { outline: 2px s
   content-visibility: auto; contain-intrinsic-size: auto 58px;
 }
 .song:hover { background: var(--hover); }
+.song:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 長押しで文字が選ばれたり、端末のメニューが出たりしないように */
+.song { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.song .more { width: 36px; height: 36px; margin: 0 -8px 0 -6px; color: var(--faint); }
+.song .more .i { width: 20px; height: 20px; }
+.song .more:hover { color: var(--ink); }
 .song .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .name, .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .song .name { font-size: 15px; }
@@ -286,6 +292,58 @@ body:has(.dragging) { user-select: none; -webkit-user-select: none; }
   content: ''; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor;
 }
 .queue .song { min-height: 54px; }
+
+/* ---------- メニュー・確認・編集 ---------- */
+.overlay { position: fixed; inset: 0; z-index: 60; }
+.overlay.sheet, .overlay.dialog { background: rgba(0, 0, 0, .38); animation: fade .15s ease; }
+.overlay.sheet { display: flex; align-items: flex-end; justify-content: center; }
+.overlay.dialog { display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+
+.song-menu {
+  background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; padding: 6px;
+}
+.overlay.sheet .song-menu {
+  width: 100%; max-width: 520px; border-radius: 16px 16px 0 0; border-bottom: 0;
+  padding: 6px 8px calc(10px + var(--safe-b)); animation: up .2s ease-out;
+  max-height: 85vh; overflow-y: auto;
+}
+.overlay.pop .song-menu { position: fixed; width: 260px; border-radius: 10px; animation: fade .12s ease; }
+.menu-head { display: flex; align-items: center; gap: 12px; padding: 10px 10px 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; min-width: 0; }
+.menu-head .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.menu-head .name { font-weight: 500; }
+.menu-head .sub { font-size: 12.5px; color: var(--sub); }
+.overlay.pop .menu-head { padding: 6px 8px 8px; }
+.overlay.pop .menu-head .art { display: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  border: 0; background: none; cursor: pointer; padding: 12px 12px; border-radius: 8px; font-size: 15px;
+}
+.overlay.pop .menu-item { padding: 9px 10px; font-size: 14px; gap: 12px; }
+.menu-item .i { width: 20px; height: 20px; color: var(--sub); }
+.menu-item:hover, .menu-item:focus-visible { background: var(--hover); outline: none; }
+.menu-item.danger, .menu-item.danger .i { color: var(--accent); }
+
+.dialog-box {
+  width: 100%; max-width: 420px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 20px; animation: up .18s ease-out;
+}
+.dialog-box h3 { margin: 0 0 6px; font-size: 17px; font-weight: 500; }
+.dialog-box > p { margin: 0 0 14px; font-size: 14px; color: var(--sub); overflow-wrap: anywhere; }
+.dialog-btns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.dialog-btns .reset { margin-right: auto; }
+.btn.primary.danger { background: var(--accent); border-color: var(--accent); }
+.editor { max-width: 480px; }
+.editor .note { font-size: 12.5px; }
+.editor .fields { display: grid; gap: 10px; }
+.editor .fields.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--sub); min-width: 0; }
+.field input {
+  font: inherit; font-size: 16px; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0;
+}
+.field input:focus { outline: none; border-color: var(--ink); }
+.editor .file { font-size: 11.5px; color: var(--faint); margin: 12px 0 0; overflow-wrap: anywhere; }
 
 /* ---------- お知らせ ---------- */
 .toast {

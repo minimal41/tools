@@ -125,13 +125,36 @@ function webAlbumKey(album, artist) {
   return album ? 'w' + album.toLowerCase() : 'w\u0000' + (artist || '').toLowerCase();
 }
 
+/* ---------- 自分で直した曲の情報（ファイルのタグは書き換えず、この端末・ブラウザに保存） ---------- */
+
+const EDIT_FIELDS = ['title', 'artist', 'album', 'albumArtist', 'track', 'disc', 'year'];
+const edits = {
+  data: (() => { try { return JSON.parse(localStorage.getItem('music.edits') || '{}') || {}; } catch { return {}; } })(),
+  get(id) { return this.data[id] || null; },
+  set(id, values) {
+    if (values && Object.keys(values).length) this.data[id] = values; else delete this.data[id];
+    try { localStorage.setItem('music.edits', JSON.stringify(this.data)); } catch { /* なし */ }
+  },
+  apply(raw) {
+    const e = this.data[raw.id];
+    return e ? { ...raw, ...e, edited: true, albumEdited: 'album' in e || 'albumArtist' in e } : raw;
+  },
+};
+
+/** タグに書かれていた元の値（「<unknown>」は空に） */
+function originalValue(raw, f) {
+  const v = raw[f];
+  if (f === 'track' || f === 'disc' || f === 'year') return Number(v) || 0;
+  return isUnknown(v) ? '' : String(v);
+}
+
 /** 取り込んだ生の情報を、表示用の曲データにそろえる */
 function normalize(raw) {
   const title = isUnknown(raw.title) ? stripExt(raw.fileName) : raw.title;
   const artist = isUnknown(raw.artist) ? '' : raw.artist;
   const albumArtist = isUnknown(raw.albumArtist) ? '' : raw.albumArtist;
   const album = isUnknown(raw.album) ? '' : raw.album;
-  const albumKey = raw.albumId ? 'a' + raw.albumId : webAlbumKey(album, artist);
+  const albumKey = raw.albumId && !raw.albumEdited ? 'a' + raw.albumId : webAlbumKey(album, artist);
   return {
     ...raw,
     title: title || '（曲名なし）',
@@ -191,7 +214,12 @@ const plays = {
 const PLAY_THRESHOLD = 30000; // 30 秒（短い曲は半分）聴いたら 1 回
 
 function setLibrary(rawTracks) {
-  lib.tracks = rawTracks.map(normalize).sort((a, b) => cmp(a.title, b.title));
+  lib.raw = rawTracks;
+  lib.tracks = rawTracks.map((r) => normalize(edits.apply(r))).sort((a, b) => cmp(a.title, b.title));
+  // アルバム名を直した曲は、同じ名前のアルバムがあればそこへ入れる
+  const nameToKey = new Map();
+  for (const t of lib.tracks) if (t.album && !t.albumEdited && !nameToKey.has(t.album.toLowerCase())) nameToKey.set(t.album.toLowerCase(), t.albumKey);
+  for (const t of lib.tracks) if (t.albumEdited && t.album && nameToKey.has(t.album.toLowerCase())) t.albumKey = nameToKey.get(t.album.toLowerCase());
   lib.byId = new Map(lib.tracks.map((t) => [t.id, t]));
 
   // アルバム
@@ -232,6 +260,9 @@ function setLibrary(rawTracks) {
   }
   lib.artists = [...artists.values()].sort((x, y) => cmp(x.name, y.name));
   lib.artistByKey = artists;
+
+  // 再生キューの中の曲も新しい情報に入れ替える
+  if (engine?.queue) engine.queue = engine.queue.map((t) => lib.byId.get(t.id) || t);
 }
 
 /* ------------------------------------------------------------------ */
@@ -344,16 +375,31 @@ class NativeEngine {
     }
     return false;
   }
+  static item(t) {
+    return {
+      id: t.id, uri: t.uri, title: t.title, artist: t.artist || UNKNOWN_ARTIST,
+      album: t.album, albumArtist: t.albumArtist, albumId: t.albumId || '',
+    };
+  }
   async setQueue(tracks, index, { play = true, position = 0 } = {}) {
     this.queue = tracks;
-    const s = await this.P.setQueue({
-      tracks: tracks.map((t) => ({
-        id: t.id, uri: t.uri, title: t.title, artist: t.artist || UNKNOWN_ARTIST,
-        album: t.album, albumArtist: t.albumArtist, albumId: t.albumId || '',
-      })),
-      index, position, play,
-    });
+    const s = await this.P.setQueue({ tracks: tracks.map(NativeEngine.item), index, position, play });
     this.apply(s);
+  }
+  async syncQueue() {
+    const s = await this.P.getState({ queue: true }).catch(() => null);
+    if (!s) return;
+    this.queue = (s.queue || []).map((id) => lib.byId.get(id)).filter(Boolean);
+    this.apply(s);
+  }
+  async addToQueue(tracks, next) {
+    await this.P.addToQueue({ tracks: tracks.map(NativeEngine.item), next });
+    await this.syncQueue();
+  }
+  async removeIds(ids) {
+    if (!this.queue.some((t) => ids.includes(t.id))) return;
+    await this.P.removeFromQueue({ ids });
+    await this.syncQueue();
   }
   async play() { this.apply(await this.P.play()); }
   async pause() { this.apply(await this.P.pause()); }
@@ -524,6 +570,47 @@ class WebEngine {
     if (p < 0) return;
     this.pos = p;
     await this.load(true);
+  }
+  async addToQueue(tracks, next) {
+    if (!this.queue.length) { await this.setQueue(tracks, 0, { play: false }); return; }
+    const base = this.queue.length;
+    this.queue.push(...tracks);
+    const added = tracks.map((_, i) => base + i);
+    if (next) this.order.splice(this.pos + 1, 0, ...added);
+    else this.order.push(...added);
+    state.count = this.queue.length;
+    emit();
+  }
+  async removeIds(ids) {
+    const drop = new Set(ids);
+    const cur = this.current();
+    const remap = new Map();
+    const queue = [];
+    this.queue.forEach((t, i) => { if (!drop.has(t.id)) { remap.set(i, queue.length); queue.push(t); } });
+    if (queue.length === this.queue.length) return;
+    const order = [];
+    let pos = 0;
+    this.order.forEach((qi, p) => {
+      if (!remap.has(qi)) return;
+      if (p < this.pos) pos++;
+      order.push(remap.get(qi));
+    });
+    this.queue = queue;
+    this.order = order;
+    this.pos = Math.min(pos, Math.max(0, order.length - 1));
+    state.count = queue.length;
+    if (cur && drop.has(cur.id)) {
+      // 再生中の曲を外したら次の曲へ
+      const wasPlaying = state.playing;
+      this.audio.pause();
+      if (order.length) { await this.load(wasPlaying); return; }
+      this.audio.removeAttribute('src');
+      this.audio.load();
+      Object.assign(state, { id: null, index: -1, playing: false, position: 0, duration: 0 });
+    } else {
+      state.index = this.order[this.pos] ?? -1;
+    }
+    emit();
   }
   async setShuffle(on) {
     state.shuffle = on;
@@ -708,15 +795,22 @@ async function playList(list, index = 0, { shuffle = false } = {}) {
   saveQueue();
 }
 
-function songRow(t, list, i, { showNumber = false, showArt = true, number, showPlays = false } = {}) {
+function songRow(t, list, i, { showNumber = false, showArt = true, number, showPlays = false, onPlay, inQueue = false, current } = {}) {
   const sub = showNumber
     ? (t.artist && list.album && t.artist !== list.album.artist ? t.artist : '')
     : [t.artist || UNKNOWN_ARTIST, t.album].filter(Boolean).join(' ・ ');
-  const row = el('button', {
-    type: 'button',
-    class: 'song' + (state.id === t.id ? ' current' : ''),
+  const play = onPlay || (() => playList(list.tracks, i));
+  const openMenu = (pt) => openSongMenu(t, { ...pt, inQueue });
+  const row = el('div', {
+    role: 'button',
+    tabindex: '0',
+    class: 'song' + ((current ?? state.id === t.id) ? ' current' : ''),
     dataset: { id: t.id },
-    onclick: () => playList(list.tracks, i),
+    onclick: play,
+    onkeydown: (e) => {
+      if (e.target !== row) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); }
+    },
   },
     showNumber ? el('span', { class: 'num', text: number != null ? String(number) : t.track ? String(t.track) : '–' }) : null,
     showArt && !showNumber ? artBox(t, 'sm') : null,
@@ -726,7 +820,16 @@ function songRow(t, list, i, { showNumber = false, showArt = true, number, showP
     ),
     showPlays ? el('span', { class: 'plays' + (plays.get(t.id) ? '' : ' zero'), text: plays.get(t.id) + '回' }) : null,
     el('span', { class: 'dur', text: t.duration ? fmtTime(t.duration) : '' }),
+    el('button', {
+      type: 'button', class: 'icon-btn more', 'aria-label': `「${t.title}」のメニュー`, 'aria-haspopup': 'menu',
+      onclick: (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenu({ x: r.right, y: r.bottom, from: e.currentTarget });
+      },
+    }, icon('more')),
   );
+  menuGestures(row, openMenu);
   return row;
 }
 
@@ -1114,6 +1217,255 @@ function updatePlayerUI() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* 曲のメニュー（⋮・長押し・右クリック／2 本指タップ）                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * スマホ：曲を長押し（約 0.5 秒）でメニュー
+ * PC：右クリック・トラックパッドの 2 本指タップ（どちらも contextmenu）でメニュー
+ */
+function menuGestures(row, open) {
+  let timer = 0, sx = 0, sy = 0, fired = false;
+  const cancel = () => { clearTimeout(timer); timer = 0; };
+  row.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('.more')) return;
+    fired = false;
+    sx = e.clientX; sy = e.clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = 0;
+      fired = true;
+      navigator.vibrate?.(12);
+      open({ x: sx, y: sy });
+    }, 500);
+  });
+  row.addEventListener('pointermove', (e) => { if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+  row.addEventListener('pointerup', cancel);
+  row.addEventListener('pointercancel', cancel);
+  row.addEventListener('pointerleave', cancel);
+  // 長押しのあとの「指を離した」でその曲が再生されないように
+  row.addEventListener('click', (e) => {
+    if (fired) { fired = false; e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  row.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (e.target.closest('.more')) return;
+    cancel();
+    open({ x: e.clientX, y: e.clientY });
+  });
+}
+
+/* ---------- 重ねて出す画面（メニュー・編集・確認）。戻るボタンで閉じる ---------- */
+
+let overlay = null;
+let overlayOpenedAt = 0;
+
+function openOverlay(node, { kind = 'sheet', onClose } = {}) {
+  if (overlay) dropOverlay();
+  const layer = el('div', { class: 'overlay ' + kind }, node);
+  // 長押しで開いたあと、指を離したときの「タップ」で閉じたり項目が選ばれたりしないように、
+  // この画面の上で押し始めたタップだけを受け付ける（キーボード操作はそのまま）
+  let pressed = false;
+  layer.addEventListener('pointerdown', () => { pressed = true; }, true);
+  layer.addEventListener('click', (e) => {
+    if (!pressed && e.detail !== 0) { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.target === layer) closeOverlay();
+  }, true);
+  document.body.append(layer);
+  overlay = { el: layer, onClose, waiters: [], returnFocus: document.activeElement };
+  overlayOpenedAt = Date.now();
+  history.pushState({ ...routeState(), overlay: true }, '');
+  return layer;
+}
+
+/** 閉じる（履歴を 1 つ戻す）。閉じ終わったら resolve */
+function closeOverlay() {
+  return new Promise((resolve) => {
+    if (!overlay) { resolve(); return; }
+    overlay.waiters.push(resolve);
+    history.back();
+  });
+}
+
+function dropOverlay() {
+  const o = overlay;
+  overlay = null;
+  o.el.remove();
+  o.onClose?.();
+  o.waiters.forEach((f) => f());
+  if (o.returnFocus?.isConnected) o.returnFocus.focus?.({ preventScroll: true });
+}
+
+function menuItem(iconName, label, action, danger = false) {
+  return el('button', {
+    type: 'button', role: 'menuitem', class: 'menu-item' + (danger ? ' danger' : ''),
+    onclick: async () => { await closeOverlay(); action(); },
+  }, icon(iconName), el('span', { text: label }));
+}
+
+function openSongMenu(t, { x, y, inQueue = false } = {}) {
+  // 長押しと contextmenu が両方来たときに 2 回開かない
+  if (overlay && Date.now() - overlayOpenedAt < 800) return;
+  const st = routeState();
+  const artistKey = (t.artist || UNKNOWN_ARTIST).toLowerCase();
+  const menu = el('div', { class: 'song-menu', role: 'menu', 'aria-label': t.title },
+    el('div', { class: 'menu-head' },
+      artBox(t, 'sm'),
+      el('span', { class: 'meta' },
+        el('span', { class: 'name', text: t.title }),
+        el('span', { class: 'sub', text: [t.artist || UNKNOWN_ARTIST, t.album].filter(Boolean).join(' ・ ') }),
+      ),
+    ),
+    menuItem('next-up', '次に再生', () => addToQueue([t], true)),
+    menuItem('queue-add', '再生キューに追加', () => addToQueue([t], false)),
+    inQueue ? menuItem('queue-remove', '再生キューから外す', () => removeFromQueue(t)) : null,
+    st.view === 'album' && st.key === t.albumKey ? null : menuItem('album', 'アルバムを開く', () => go({ view: 'album', key: t.albumKey })),
+    st.view === 'artist' && st.key === artistKey ? null
+      : lib.artistByKey.has(artistKey) ? menuItem('person', 'アーティストを開く', () => go({ view: 'artist', key: artistKey })) : null,
+    menuItem('edit', '曲の情報を編集', () => openEditor(t)),
+    menuItem('trash', mode === 'native' ? 'スマホから削除' : 'この曲を削除', () => deleteTrack(t), true),
+  );
+  const wide = window.matchMedia('(min-width: 600px) and (pointer: fine)').matches;
+  const layer = openOverlay(menu, { kind: wide && x != null ? 'pop' : 'sheet' });
+  if (layer.classList.contains('pop')) {
+    // 押した場所のそばに出す（画面からはみ出さないように）
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+  }
+  menu.querySelector('.menu-item')?.focus({ preventScroll: true });
+}
+
+async function addToQueue(tracks, next) {
+  try {
+    await engine.addToQueue(tracks, next);
+    toast(next ? '次に再生します' : '再生キューに追加しました');
+    saveQueue();
+    if (routeState().player) renderQueue();
+  } catch (e) {
+    toast('追加できませんでした：' + (e?.message || e));
+  }
+}
+
+async function removeFromQueue(t) {
+  try {
+    await engine.removeIds([t.id]);
+    saveQueue();
+    renderQueue();
+  } catch (e) {
+    toast('外せませんでした：' + (e?.message || e));
+  }
+}
+
+/* ---------- 確認 ---------- */
+
+function confirmDialog({ title, body, ok = 'OK', danger = false }) {
+  return new Promise((resolve) => {
+    let answer = false;
+    const box = el('div', { class: 'dialog-box', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': title },
+      el('h3', { text: title }),
+      body ? el('p', { text: body }) : null,
+      el('div', { class: 'dialog-btns' },
+        el('button', { type: 'button', class: 'btn', onclick: () => closeOverlay() }, 'キャンセル'),
+        el('button', { type: 'button', class: 'btn primary' + (danger ? ' danger' : ''), onclick: () => { answer = true; closeOverlay(); } }, ok),
+      ),
+    );
+    openOverlay(box, { kind: 'dialog', onClose: () => resolve(answer) });
+    box.querySelector('.btn')?.focus();
+  });
+}
+
+/* ---------- 曲の情報を編集 ---------- */
+
+function openEditor(t) {
+  const raw = lib.raw.find((r) => r.id === t.id);
+  if (!raw) return;
+  const cur = edits.apply(raw);
+  const labels = { title: '曲名', artist: 'アーティスト', album: 'アルバム', albumArtist: 'アルバムアーティスト', track: 'トラック番号', disc: 'ディスク番号', year: '年' };
+  const inputs = {};
+  const field = (f) => {
+    const num = f === 'track' || f === 'disc' || f === 'year';
+    const v = originalValue(cur, f);
+    const input = el('input', {
+      name: f, value: num ? (v || '') : v, autocomplete: 'off',
+      type: num ? 'number' : 'text', inputmode: num ? 'numeric' : null, min: num ? '0' : null,
+      placeholder: f === 'title' ? stripExt(raw.fileName) : '',
+    });
+    inputs[f] = input;
+    return el('label', { class: 'field' + (num ? ' is-num' : '') }, el('span', { text: labels[f] }), input);
+  };
+  const hasEdits = !!edits.get(t.id);
+  const form = el('form', {
+    class: 'dialog-box editor', 'aria-label': '曲の情報を編集',
+    onsubmit: async (e) => {
+      e.preventDefault();
+      const values = {};
+      for (const f of EDIT_FIELDS) {
+        const num = f === 'track' || f === 'disc' || f === 'year';
+        const v = num ? (parseInt(inputs[f].value, 10) || 0) : inputs[f].value.trim();
+        if (v !== originalValue(raw, f)) values[f] = v;
+      }
+      edits.set(t.id, values);
+      await closeOverlay();
+      afterLibraryChange();
+      toast('曲の情報を保存しました');
+    },
+  },
+    el('h3', { text: '曲の情報を編集' }),
+    el('p', { class: 'note', text: (mode === 'native' ? 'この端末の Music での表示が変わります' : 'このブラウザの Music での表示が変わります') + '（音楽ファイルのタグは書き換えません）。' }),
+    el('div', { class: 'fields' }, ...['title', 'artist', 'album', 'albumArtist'].map(field)),
+    el('div', { class: 'fields row3' }, ...['track', 'disc', 'year'].map(field)),
+    el('p', { class: 'file', text: raw.path ? `${raw.path}${raw.path.endsWith('/') ? '' : '/'}${raw.fileName || ''}` : (raw.fileName || '') }),
+    el('div', { class: 'dialog-btns' },
+      hasEdits ? el('button', {
+        type: 'button', class: 'btn reset',
+        onclick: async () => { edits.set(t.id, null); await closeOverlay(); afterLibraryChange(); toast('タグの情報に戻しました'); },
+      }, 'タグの情報に戻す') : null,
+      el('button', { type: 'button', class: 'btn', onclick: () => closeOverlay() }, 'キャンセル'),
+      el('button', { type: 'submit', class: 'btn primary' }, '保存'),
+    ),
+  );
+  openOverlay(form, { kind: 'dialog' });
+  inputs.title.focus({ preventScroll: true });
+}
+
+/** 曲の情報が変わったあと：一覧・再生中の表示を作り直す */
+function afterLibraryChange() {
+  setLibrary(lib.raw);
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+  shownId = undefined;
+  updatePlayerUI();
+}
+
+/* ---------- 曲を削除 ---------- */
+
+async function deleteTrack(t) {
+  const ok = await confirmDialog(mode === 'native'
+    ? { title: 'スマホから削除しますか？', body: `「${t.title}」の音楽ファイルを端末から削除します。元に戻せません。`, ok: '削除', danger: true }
+    : { title: 'この曲を削除しますか？', body: `「${t.title}」をこのブラウザから削除します（元のファイルは消えません）。`, ok: '削除', danger: true });
+  if (!ok) return;
+  try {
+    if (mode === 'native') {
+      const r = await native.Library.delete({ uris: [t.uri] });
+      if (!r?.deleted) { toast('削除しませんでした'); return; }
+    } else {
+      await webStore.remove([t.id]);
+    }
+  } catch (e) {
+    toast('削除できませんでした：' + (e?.message || e));
+    return;
+  }
+  await engine.removeIds([t.id]).catch(() => {});
+  edits.set(t.id, null);
+  lib.raw = lib.raw.filter((r) => r.id !== t.id);
+  afterLibraryChange();
+  saveQueue();
+  toast(`「${t.title}」を削除しました`);
+}
+
 function renderQueue() {
   const box = $('pQueue');
   const q = engine.queue || [];
@@ -1124,14 +1476,7 @@ function renderQueue() {
   const end = Math.min(q.length, start + 60);
   for (let i = start; i < end; i++) {
     const t = q[i];
-    box.append(el('button', {
-      type: 'button', class: 'song' + (i === curIdx ? ' current' : ''),
-      onclick: () => engine.skipTo(i),
-    },
-      artBox(t, 'sm'),
-      el('span', { class: 'meta' }, el('span', { class: 'name', text: t.title }), el('span', { class: 'sub', text: t.artist || UNKNOWN_ARTIST })),
-      el('span', { class: 'dur', text: t.duration ? fmtTime(t.duration) : '' }),
-    ));
+    box.append(songRow(t, { tracks: q }, i, { onPlay: () => engine.skipTo(i), inQueue: true, current: i === curIdx }));
   }
   $('pQueueHead').textContent = state.shuffle ? '再生キュー（シャッフル中・元の並び）' : '再生キュー';
 }
@@ -1304,7 +1649,11 @@ function bindControls() {
     });
   }
 
-  addEventListener('popstate', render);
+  addEventListener('popstate', () => {
+    if (overlay) { dropOverlay(); return; } // メニューなどを閉じるだけ（下の画面はそのまま）
+    render();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay) closeOverlay(); });
 
   // 定期的に再生位置を更新（アプリ版）・状態を保存
   setInterval(() => {
@@ -1368,7 +1717,7 @@ async function start() {
   }
 
   bindControls();
-  history.replaceState({ ...(history.state || {}), player: false }, '');
+  history.replaceState({ ...(history.state || {}), player: false, overlay: false }, '');
 
   await engine.loadPlays();
   if (mode === 'native') {
