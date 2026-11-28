@@ -171,23 +171,7 @@ public class MusicPlayerPlugin extends Plugin {
     }
 
     private MediaItem toItem(JSONObject t) {
-        MediaMetadata.Builder meta = new MediaMetadata.Builder()
-            .setTitle(t.optString("title", ""))
-            .setArtist(t.optString("artist", ""))
-            .setAlbumTitle(t.optString("album", ""))
-            .setAlbumArtist(t.optString("albumArtist", ""));
-        String albumId = t.optString("albumId", "");
-        if (!albumId.isEmpty()) {
-            // ページで一度取り出したジャケットがあれば通知・ロック画面にも出す
-            // （無いときも、再生が始まると曲ファイルに埋め込まれた画像が使われる）
-            File art = MusicLibraryPlugin.artFile(getContext(), "a" + albumId.replaceAll("[^A-Za-z0-9_-]", "_"));
-            if (art.exists()) meta.setArtworkUri(Uri.fromFile(art));
-        }
-        return new MediaItem.Builder()
-            .setMediaId(t.optString("id", t.optString("uri")))
-            .setUri(Uri.parse(t.optString("uri")))
-            .setMediaMetadata(meta.build())
-            .build();
+        return QueueStore.toItem(getContext(), t);
     }
 
     /** 再生キューに足す。tracks: [...], next: true なら今の曲の次、false なら最後 */

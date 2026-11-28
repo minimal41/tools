@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Music ウィジェット：横 4 マス × 縦 1 マス（横に伸ばせる） -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_music_description"
+    android:initialLayout="@layout/widget_music"
+    android:minWidth="250dp"
+    android:minHeight="56dp"
+    android:minResizeWidth="200dp"
+    android:minResizeHeight="56dp"
+    android:previewLayout="@layout/widget_music"
+    android:resizeMode="horizontal"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

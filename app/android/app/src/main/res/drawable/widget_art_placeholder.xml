@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ジャケットが無いときの絵（音符） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#2B2B8C" android:pathData="M0,0h24v24h-24z" />
+    <path android:strokeColor="#B8B8E6" android:strokeWidth="1.2" android:strokeLineCap="round"
+        android:pathData="M9.5,16.2V8.4a0.8,0.8 0,0 1,0.62 -0.78l5.6,-1.26A0.8,0.8 0,0 1,16.7 7.14v7.3" />
+    <path android:fillColor="#B8B8E6" android:pathData="M7.9,14.6a1.7,1.7 0,1 0,0.01 0z" />
+    <path android:fillColor="#B8B8E6" android:pathData="M15.1,12.9a1.7,1.7 0,1 0,0.01 0z" />
+</vector>

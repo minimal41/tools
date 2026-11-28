@@ -4,4 +4,6 @@
     <string name="title_activity_main">Tools</string>
     <string name="package_name">com.minimal41.tools</string>
     <string name="custom_url_scheme">com.minimal41.tools</string>
+    <string name="widget_music_name">Music</string>
+    <string name="widget_music_description">再生中の曲と、前の曲・再生・次の曲のボタン</string>
 </resources>
