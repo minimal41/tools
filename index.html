@@ -135,6 +135,7 @@
     margin-bottom: 20px;
   }
   .notice[hidden] { display: none; }
+  .btn[hidden] { display: none; } /* .btn の display より優先して、ログイン状態に合わないボタンを隠す */
 
   /* Footer：画面幅いっぱいの淡い帯。ページが短くても画面の下端に置く */
   .site-footer {
@@ -308,5 +309,7 @@ addEventListener('load', function () {
   }, 3000);
 });
 </script>
+<!-- Android アプリの自動更新（ブラウザでは何もしない） -->
+<script type="module" src="shared/app-update.js"></script>
 </body>
 </html>

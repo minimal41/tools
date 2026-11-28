@@ -4,25 +4,25 @@
 # - main に入ったとき：リリース「android-latest」の APK を差し替える
 #   （スマホで https://github.com/<owner>/<repo>/releases/tag/android-latest を開けばダウンロードできる）
 #
+# 自動更新：あわせてページだけのデータ（web.zip）と版の情報（web.json）も置く。
+#   アプリは起動時に web.json を見て、新しければ web.zip を取り込む（APK を入れ直さなくてよい）。
+#   Android 側の仕組みが変わった版（nativeHash が違う）は取り込まず、APK の更新を案内する。
+#
 # 署名：リポジトリの Secrets に ANDROID_KEYSTORE_BASE64 などがあればその鍵で署名した release 版、
 #       無ければ debug 版を作る（debug 版は毎回鍵が変わるので、更新のたびにアンインストールが必要）。
 name: Android APK
 
 on:
   push:
-    paths:
-      - 'app/**'
-      - 'music/**'
-      - 'shared/**'
-      - 'convrt/**'
-      - 'slides/**'
-      - 'checklist/**'
-      - 'guitar/**'
-      - 'change-seats/**'
-      - 'makingsite/**'
-      - 'sheetbase/**'
-      - '*.html'
-      - '.github/workflows/android.yml'
+    # ページ・アプリに関係しないファイル（サーバーの API・説明書など）だけの変更ではビルドしない
+    paths-ignore:
+      - 'api/**'
+      - '**.md'
+      - 'firestore.rules'
+      - 'vercel.json'
+      - '.vercelignore'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +55,19 @@ jobs:
         run: |
           npm ci
           npm run sync
+
+      - name: 自動更新用のデータ（web.zip・web.json）を作る
+        run: |
+          cd app/www
+          zip -qrX "$RUNNER_TEMP/web.zip" .
+          node -e '
+            const fs = require("fs");
+            const [zip, out] = process.argv.slice(1);
+            const v = JSON.parse(fs.readFileSync("app-version.json", "utf8"));
+            const sha = require("crypto").createHash("sha256").update(fs.readFileSync(zip)).digest("hex");
+            fs.writeFileSync(out, JSON.stringify({ ...v, zip: "web.zip", zipSha256: sha, zipSize: fs.statSync(zip).size, commit: process.env.GITHUB_SHA }));
+          ' "$RUNNER_TEMP/web.zip" "$RUNNER_TEMP/web.json"
+          cat "$RUNNER_TEMP/web.json"
 
       - name: 署名の鍵を用意
         id: keystore
@@ -89,7 +102,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tools-apk
-          path: ${{ runner.temp }}/tools.apk
+          path: |
+            ${{ runner.temp }}/tools.apk
+            ${{ runner.temp }}/web.zip
+            ${{ runner.temp }}/web.json
 
       - name: リリース「android-latest」を更新（main のみ）
         if: github.ref == 'refs/heads/main'
@@ -97,8 +113,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete android-latest --cleanup-tag --yes || true
-          gh release create android-latest "$RUNNER_TEMP/tools.apk#Tools.apk" \
+          gh release create android-latest "$RUNNER_TEMP/tools.apk#Tools.apk" "$RUNNER_TEMP/web.zip" "$RUNNER_TEMP/web.json" \
             --target "$GITHUB_SHA" \
             --title "Tools（Android アプリ）" \
-            --notes "main の最新（${GITHUB_SHA::7}、${{ steps.keystore.outputs.variant }} 版）。スマホでこのページを開き、Tools.apk をダウンロードしてインストールしてください。" \
+            --notes "main の最新（${GITHUB_SHA::7}、${{ steps.keystore.outputs.variant }} 版）。スマホでこのページを開き、Tools.apk をダウンロードしてインストールしてください。ページの変更はアプリが自動で取り込みます（web.zip・web.json はそのためのデータ）。" \
             --prerelease

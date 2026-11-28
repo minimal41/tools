@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         // アプリ独自のプラグイン（音楽の一覧・再生）
         registerPlugin(MusicLibraryPlugin.class);
         registerPlugin(MusicPlayerPlugin.class);
+        registerPlugin(AppUpdatePlugin.class); // ページの自動更新
         super.onCreate(savedInstanceState);
 
         // 戻るボタン：ページの履歴があれば戻る。なければアプリを閉じずに裏へ回す（音楽はそのまま流れる）
