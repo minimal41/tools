@@ -939,8 +939,11 @@ function viewArtists(q) {
 
 function backBar(label, extra) {
   return el('div', { class: 'back-bar' },
-    el('button', { type: 'button', class: 'icon-btn', 'aria-label': '戻る', onclick: () => history.back() }, icon('back')),
-    el('span', { class: 'back-label', text: label }),
+    // 矢印と文字をまとめて 1 つのボタンにする（文字を押しても戻れる）
+    el('button', { type: 'button', class: 'back-btn', 'aria-label': `戻る（${label}）`, onclick: () => history.back() },
+      icon('back'),
+      el('span', { class: 'back-label', text: label }),
+    ),
     extra || null,
   );
 }
