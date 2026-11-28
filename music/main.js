@@ -145,6 +145,51 @@ function normalize(raw) {
   };
 }
 
+/* ---------- アルバムの曲の並び（自分で並べ替えたもの） ---------- */
+
+const albumOrder = {
+  data: (() => { try { return JSON.parse(localStorage.getItem('music.albumOrder') || '{}') || {}; } catch { return {}; } })(),
+  get(key) { return Array.isArray(this.data[key]) ? this.data[key] : null; },
+  set(key, ids) {
+    if (ids) this.data[key] = ids; else delete this.data[key];
+    try { localStorage.setItem('music.albumOrder', JSON.stringify(this.data)); } catch { /* 保存できなくても表示は変える */ }
+  },
+};
+
+/** 並べ替えた順があればそれに合わせる（あとから増えた曲は元の順で最後に） */
+function applyAlbumOrder(a) {
+  const ids = albumOrder.get(a.key);
+  a.custom = !!ids;
+  if (!ids) return;
+  const pos = new Map(ids.map((id, i) => [id, i]));
+  const rest = a.tracks.filter((t) => !pos.has(t.id));
+  a.tracks = a.tracks.filter((t) => pos.has(t.id)).sort((x, y) => pos.get(x.id) - pos.get(y.id)).concat(rest);
+}
+
+/* ---------- 再生回数 ---------- */
+
+const plays = {
+  counts: {},
+  get(id) { return this.counts[id] || 0; },
+  album(a) { return a.tracks.reduce((s, t) => s + this.get(t.id), 0); },
+  loadLocal() {
+    try { this.counts = JSON.parse(localStorage.getItem('music.plays') || '{}') || {}; } catch { this.counts = {}; }
+  },
+  /** ブラウザ版：1 回ふやして保存 */
+  add(id) {
+    this.counts[id] = this.get(id) + 1;
+    try { localStorage.setItem('music.plays', JSON.stringify(this.counts)); } catch { /* なし */ }
+    this.changed(id);
+  },
+  set(id, n) { this.counts[id] = n; this.changed(id); },
+  /** 表示中の回数だけ書き換える（一覧は並べ直さない：スクロール中に動かないように） */
+  changed(id) {
+    for (const e of document.querySelectorAll(`.song[data-id="${CSS.escape(id)}"] .plays`)) { e.textContent = this.get(id) + '回'; e.classList.toggle('zero', !this.get(id)); }
+  },
+};
+
+const PLAY_THRESHOLD = 30000; // 30 秒（短い曲は半分）聴いたら 1 回
+
 function setLibrary(rawTracks) {
   lib.tracks = rawTracks.map(normalize).sort((a, b) => cmp(a.title, b.title));
   lib.byId = new Map(lib.tracks.map((t) => [t.id, t]));
@@ -170,6 +215,7 @@ function setLibrary(rawTracks) {
     else if (a.artists.size > 1) a.artist = 'さまざまなアーティスト';
     else a.artist = UNKNOWN_ARTIST;
     a.multiDisc = new Set(a.tracks.map((t) => t.disc || 0)).size > 1;
+    applyAlbumOrder(a);
   }
   lib.albums = [...albums.values()].sort((x, y) => cmp(x.title, y.title));
   lib.albumByKey = albums;
@@ -268,6 +314,11 @@ class NativeEngine {
     this.queue = [];
     P.addListener('state', (s) => this.apply(s));
     P.addListener('error', (e) => toast('再生できませんでした' + (e?.message ? '：' + e.message : '')));
+    P.addListener('played', (e) => { if (e?.id) plays.set(e.id, e.count || 0); });
+  }
+  async loadPlays() {
+    const r = await this.P.getPlayCounts().catch(() => null);
+    if (r?.counts) plays.counts = r.counts;
   }
   apply(s) {
     if (!s) return;
@@ -337,8 +388,10 @@ class WebEngine {
     for (const ev of ['play', 'pause', 'loadedmetadata', 'durationchange', 'seeked']) a.addEventListener(ev, sync);
     a.addEventListener('timeupdate', () => {
       state.position = (a.currentTime || 0) * 1000;
+      this.countListening();
       emit();
     });
+    a.addEventListener('pause', () => { this.tick = 0; });
     a.addEventListener('loadedmetadata', () => {
       const t = this.current();
       if (t && isFinite(a.duration) && a.duration > 0 && !t.duration) {
@@ -362,6 +415,19 @@ class WebEngine {
     }
   }
   current() { return this.queue[this.order[this.pos]]; }
+  resetCount() { this.heard = 0; this.counted = false; this.tick = 0; }
+  /** 聴いた時間を足していき、30 秒（短い曲は半分）を超えたら再生回数を 1 ふやす */
+  countListening() {
+    const now = performance.now();
+    if (this.tick && !this.audio.paused) this.heard = (this.heard || 0) + Math.min(now - this.tick, 1500);
+    this.tick = this.audio.paused ? 0 : now;
+    const t = this.current();
+    if (!t || this.counted) return;
+    const d = isFinite(this.audio.duration) && this.audio.duration > 0 ? this.audio.duration * 1000 : 0;
+    const need = d ? Math.min(PLAY_THRESHOLD, Math.max(1000, d / 2)) : PLAY_THRESHOLD;
+    if (this.heard >= need) { this.counted = true; plays.add(t.id); }
+  }
+  async loadPlays() { plays.loadLocal(); }
   buildOrder(start) {
     const n = this.queue.length;
     if (state.shuffle) {
@@ -378,6 +444,7 @@ class WebEngine {
   async load(play, position = 0) {
     const t = this.current();
     const token = ++this.loadToken;
+    this.resetCount();
     state.id = t ? t.id : null;
     state.index = t ? this.order[this.pos] : -1;
     state.count = this.queue.length;
@@ -414,7 +481,7 @@ class WebEngine {
     try { navigator.mediaSession.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate || 1 }); } catch { /* なし */ }
   }
   onEnded() {
-    if (state.repeat === 'one') { this.audio.currentTime = 0; this.audio.play(); return; }
+    if (state.repeat === 'one') { this.resetCount(); this.audio.currentTime = 0; this.audio.play(); return; }
     if (this.pos + 1 < this.order.length) { this.pos++; this.load(true); return; }
     if (state.repeat === 'all' && this.order.length) {
       if (state.shuffle) this.buildOrder(this.order[Math.floor(Math.random() * this.order.length)]);
@@ -602,6 +669,8 @@ const ui = {
   tab: localStorage.getItem('music.tab') || 'songs',
   query: '',
   sort: localStorage.getItem('music.sort') || 'title',
+  albumSort: localStorage.getItem('music.albumSort') || 'title',
+  editAlbum: null, // 並べ替え中のアルバム
 };
 
 function routeState() {
@@ -622,6 +691,7 @@ function matches(t, q) {
 function sortedSongs(list) {
   const arr = [...list];
   if (ui.sort === 'added') arr.sort((a, b) => (b.added || 0) - (a.added || 0) || cmp(a.title, b.title));
+  else if (ui.sort === 'plays') arr.sort((a, b) => plays.get(b.id) - plays.get(a.id) || cmp(a.title, b.title));
   else if (ui.sort === 'artist') arr.sort((a, b) => cmp(a.artist || '￿', b.artist || '￿') || cmp(a.album, b.album) || (a.disc - b.disc) || (a.track - b.track) || cmp(a.title, b.title));
   return arr;
 }
@@ -638,7 +708,7 @@ async function playList(list, index = 0, { shuffle = false } = {}) {
   saveQueue();
 }
 
-function songRow(t, list, i, { showNumber = false, showArt = true } = {}) {
+function songRow(t, list, i, { showNumber = false, showArt = true, number, showPlays = false } = {}) {
   const sub = showNumber
     ? (t.artist && list.album && t.artist !== list.album.artist ? t.artist : '')
     : [t.artist || UNKNOWN_ARTIST, t.album].filter(Boolean).join(' ・ ');
@@ -648,12 +718,13 @@ function songRow(t, list, i, { showNumber = false, showArt = true } = {}) {
     dataset: { id: t.id },
     onclick: () => playList(list.tracks, i),
   },
-    showNumber ? el('span', { class: 'num', text: t.track ? String(t.track) : '–' }) : null,
+    showNumber ? el('span', { class: 'num', text: number != null ? String(number) : t.track ? String(t.track) : '–' }) : null,
     showArt && !showNumber ? artBox(t, 'sm') : null,
     el('span', { class: 'meta' },
       el('span', { class: 'name', text: t.title }),
       sub ? el('span', { class: 'sub', text: sub }) : null,
     ),
+    showPlays ? el('span', { class: 'plays' + (plays.get(t.id) ? '' : ' zero'), text: plays.get(t.id) + '回' }) : null,
     el('span', { class: 'dur', text: t.duration ? fmtTime(t.duration) : '' }),
   );
   return row;
@@ -691,27 +762,30 @@ function emptyState() {
   );
 }
 
+function sortSelect(options, value, onChange) {
+  return el('label', { class: 'sort' }, '並び順',
+    el('select', { onchange: (e) => onChange(e.target.value) },
+      ...options.map(([v, l]) => {
+        const o = el('option', { value: v, text: l });
+        if (value === v) o.selected = true;
+        return o;
+      }),
+    ),
+  );
+}
+
 function viewSongs(q) {
   const list = sortedSongs(lib.tracks.filter((t) => matches(t, q)));
   const wrap = el('section', { class: 'view' });
   const ctx = { tracks: list };
   wrap.append(el('div', { class: 'list-head' },
     el('span', { class: 'count', text: `${list.length} 曲` }),
-    el('label', { class: 'sort' }, '並び順',
-      el('select', {
-        onchange: (e) => { ui.sort = e.target.value; localStorage.setItem('music.sort', ui.sort); render(); },
-      },
-        ...[['title', '曲名'], ['artist', 'アーティスト'], ['added', '追加が新しい順']].map(([v, l]) => {
-          const o = el('option', { value: v, text: l });
-          if (ui.sort === v) o.selected = true;
-          return o;
-        }),
-      ),
-    ),
+    sortSelect([['title', '曲名'], ['artist', 'アーティスト'], ['plays', '再生回数が多い順'], ['added', '追加が新しい順']], ui.sort,
+      (v) => { ui.sort = v; localStorage.setItem('music.sort', v); render(); }),
   ));
   if (list.length) wrap.append(playButtons(list));
   const ul = el('div', { class: 'songs' });
-  list.forEach((t, i) => ul.append(songRow(t, ctx, i)));
+  list.forEach((t, i) => ul.append(songRow(t, ctx, i, { showPlays: ui.sort === 'plays' })));
   wrap.append(ul);
   return wrap;
 }
@@ -726,8 +800,15 @@ function albumCard(a) {
 
 function viewAlbums(q) {
   const list = lib.albums.filter((a) => !q || (a.title + '\u0000' + a.artist).toLowerCase().includes(q) || a.tracks.some((t) => matches(t, q)));
+  if (ui.albumSort === 'artist') list.sort((x, y) => cmp(x.artist, y.artist) || (x.year || 9999) - (y.year || 9999) || cmp(x.title, y.title));
+  else if (ui.albumSort === 'plays') list.sort((x, y) => plays.album(y) - plays.album(x) || cmp(x.title, y.title));
+  else if (ui.albumSort === 'added') list.sort((x, y) => Math.max(...y.tracks.map((t) => t.added || 0)) - Math.max(...x.tracks.map((t) => t.added || 0)) || cmp(x.title, y.title));
   const wrap = el('section', { class: 'view' });
-  wrap.append(el('div', { class: 'list-head' }, el('span', { class: 'count', text: `${list.length} 枚` })));
+  wrap.append(el('div', { class: 'list-head' },
+    el('span', { class: 'count', text: `${list.length} 枚` }),
+    sortSelect([['title', 'アルバム名'], ['artist', 'アーティスト'], ['plays', '再生回数が多い順'], ['added', '追加が新しい順']], ui.albumSort,
+      (v) => { ui.albumSort = v; localStorage.setItem('music.albumSort', v); render(); }),
+  ));
   const grid = el('div', { class: 'album-grid' });
   for (const a of list) grid.append(albumCard(a));
   wrap.append(grid);
@@ -753,11 +834,124 @@ function viewArtists(q) {
   return wrap;
 }
 
-function backBar(label) {
+function backBar(label, extra) {
   return el('div', { class: 'back-bar' },
     el('button', { type: 'button', class: 'icon-btn', 'aria-label': '戻る', onclick: () => history.back() }, icon('back')),
     el('span', { class: 'back-label', text: label }),
+    extra || null,
   );
+}
+
+/* ---------- アルバムの曲の並べ替え ---------- */
+
+function saveAlbumOrder(a, ids) {
+  albumOrder.set(a.key, ids);
+  const byId = new Map(a.tracks.map((t) => [t.id, t]));
+  a.tracks = ids.map((id) => byId.get(id)).filter(Boolean);
+  a.custom = true;
+}
+
+function resetAlbumOrder(a) {
+  albumOrder.set(a.key, null);
+  a.tracks.sort((x, y) => (x.disc || 0) - (y.disc || 0) || (x.track || 0) - (y.track || 0) || cmp(x.fileName, y.fileName) || cmp(x.title, y.title));
+  a.custom = false;
+}
+
+function moveTrack(a, from, to) {
+  if (to < 0 || to >= a.tracks.length) return;
+  const ids = a.tracks.map((t) => t.id);
+  const [id] = ids.splice(from, 1);
+  ids.splice(to, 0, id);
+  saveAlbumOrder(a, ids);
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+  const btn = document.querySelector(`.edit-row[data-id="${CSS.escape(id)}"] .${to > from ? 'down' : 'up'}`);
+  btn?.focus({ preventScroll: true });
+}
+
+/** つまみ（≡）を上下にドラッグして並べ替える（指でもマウスでも） */
+function dragHandle(a, list) {
+  const handle = el('span', { class: 'handle', 'aria-hidden': 'true', title: 'ドラッグで移動' }, icon('grip'));
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    const row = handle.closest('.edit-row');
+    let startY = e.clientY;
+    let lastY = e.clientY;
+    let scrollTimer = 0;
+    handle.setPointerCapture(e.pointerId);
+    row.classList.add('dragging');
+    const place = () => {
+      row.style.transform = `translateY(${lastY - startY}px)`;
+      const r = row.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      const next = row.nextElementSibling;
+      const prev = row.previousElementSibling;
+      // ドラッグ中の行そのものを DOM で動かすと指のキャプチャが外れるので、となりの行のほうを動かす
+      if (next) {
+        const n = next.getBoundingClientRect();
+        if (mid > n.top + n.height / 2) { list.insertBefore(next, row); startY += n.height; place(); return; }
+      }
+      if (prev) {
+        const p = prev.getBoundingClientRect();
+        if (mid < p.top + p.height / 2) { list.insertBefore(prev, row.nextSibling); startY -= p.height; place(); }
+      }
+    };
+    // 画面の端に近づいたら自動でスクロール
+    const autoScroll = () => {
+      const edge = 90;
+      const dy = lastY < edge + 120 ? -12 : lastY > window.innerHeight - edge ? 12 : 0;
+      if (dy) {
+        const before = window.scrollY;
+        window.scrollBy(0, dy);
+        const moved = window.scrollY - before;   // 端まで来ていたら動かない
+        if (moved) { startY -= moved; place(); }
+      }
+      scrollTimer = requestAnimationFrame(autoScroll);
+    };
+    scrollTimer = requestAnimationFrame(autoScroll);
+    const move = (ev) => { lastY = ev.clientY; place(); };
+    let finished = false;
+    const up = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(scrollTimer);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      handle.removeEventListener('lostpointercapture', up);
+      row.classList.remove('dragging');
+      row.style.transform = '';
+      const ids = [...list.querySelectorAll('.edit-row')].map((r) => r.dataset.id);
+      if (ids.join('\u0000') !== a.tracks.map((t) => t.id).join('\u0000')) {
+        saveAlbumOrder(a, ids);
+        list.querySelectorAll('.edit-row .num').forEach((n, i) => { n.textContent = String(i + 1); });
+      }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+    handle.addEventListener('lostpointercapture', up);
+  });
+  return handle;
+}
+
+function editList(a) {
+  const list = el('div', { class: 'songs numbered editing' });
+  a.tracks.forEach((t, i) => {
+    list.append(el('div', { class: 'song edit-row', dataset: { id: t.id } },
+      el('span', { class: 'num', text: String(i + 1) }),
+      el('span', { class: 'meta' },
+        el('span', { class: 'name', text: t.title }),
+        t.artist && t.artist !== a.artist ? el('span', { class: 'sub', text: t.artist }) : null,
+      ),
+      el('button', { type: 'button', class: 'icon-btn sm up', 'aria-label': t.title + ' を上へ', onclick: () => moveTrack(a, a.tracks.indexOf(t), a.tracks.indexOf(t) - 1) }, icon('up')),
+      el('button', { type: 'button', class: 'icon-btn sm down', 'aria-label': t.title + ' を下へ', onclick: () => moveTrack(a, a.tracks.indexOf(t), a.tracks.indexOf(t) + 1) }, icon('down')),
+      dragHandle(a, list),
+    ));
+  });
+  return list;
 }
 
 function viewAlbum(key) {
@@ -765,8 +959,15 @@ function viewAlbum(key) {
   const wrap = el('section', { class: 'view detail' });
   if (!a) { wrap.append(backBar('アルバム'), el('p', { class: 'empty', text: 'アルバムが見つかりません。' })); return wrap; }
   const total = a.tracks.reduce((s, t) => s + (t.duration || 0), 0);
+  const editing = ui.editAlbum === key;
+  const editBtn = a.tracks.length > 1
+    ? el('button', {
+      type: 'button', class: 'btn small' + (editing ? ' primary' : ''),
+      onclick: () => { ui.editAlbum = editing ? null : key; const y = window.scrollY; render(); window.scrollTo(0, y); },
+    }, editing ? '完了' : '並べ替え')
+    : null;
   wrap.append(
-    backBar('アルバム'),
+    backBar('アルバム', editBtn),
     el('div', { class: 'album-hero' },
       artBox(a.tracks[0], 'hero'),
       el('div', { class: 'hero-text' },
@@ -780,13 +981,24 @@ function viewAlbum(key) {
       ),
     ),
   );
+  if (editing) {
+    wrap.append(el('div', { class: 'edit-head' },
+      el('p', { text: '≡ をドラッグするか ▲▼ で曲の順番を変えられます。この順で再生されます。' }),
+      a.custom ? el('button', {
+        type: 'button', class: 'btn small',
+        onclick: () => { resetAlbumOrder(a); const y = window.scrollY; render(); window.scrollTo(0, y); toast('元の順（トラック番号順）に戻しました'); },
+      }, '元の順に戻す') : null,
+    ), editList(a));
+    return wrap;
+  }
   const ul = el('div', { class: 'songs numbered' });
   const ctx = { tracks: a.tracks, album: a };
   let disc = null;
   a.tracks.forEach((t, i) => {
-    if (a.multiDisc && t.disc !== disc) { disc = t.disc; ul.append(el('div', { class: 'disc', text: `ディスク ${disc || 1}` })); }
-    ul.append(songRow(t, ctx, i, { showNumber: true }));
+    if (a.multiDisc && !a.custom && t.disc !== disc) { disc = t.disc; ul.append(el('div', { class: 'disc', text: `ディスク ${disc || 1}` })); }
+    ul.append(songRow(t, ctx, i, { showNumber: true, number: a.custom ? i + 1 : undefined }));
   });
+  if (a.custom) wrap.append(el('p', { class: 'custom-note', text: '自分で並べ替えた順' }));
   wrap.append(ul);
   return wrap;
 }
@@ -824,6 +1036,7 @@ function render() {
   document.body.classList.toggle('in-detail', detail);
   for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
 
+  if (st.view !== 'album' || st.key !== ui.editAlbum) ui.editAlbum = null;
   let v;
   if (st.view === 'album') v = viewAlbum(st.key);
   else if (st.view === 'artist') v = viewArtist(st.key);
@@ -1103,6 +1316,13 @@ function bindControls() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { saveQueue(); return; }
     engine.poll();
+    // 画面を消している間に数えた再生回数を読み直す
+    if (mode === 'native') {
+      engine.loadPlays().then(() => {
+        const st = routeState();
+        if (!st.view && !st.player && (ui.sort === 'plays' || ui.albumSort === 'plays')) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+      });
+    }
     // アプリに戻ったとき、しばらくぶりなら新しくダウンロードした曲を読み込む
     if (mode === 'native' && permission && Date.now() - lastScan > 30000) scan();
   });
@@ -1150,6 +1370,7 @@ async function start() {
   bindControls();
   history.replaceState({ ...(history.state || {}), player: false }, '');
 
+  await engine.loadPlays();
   if (mode === 'native') {
     await scan();
   } else {

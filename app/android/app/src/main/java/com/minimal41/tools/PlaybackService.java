@@ -21,6 +21,9 @@ public class PlaybackService extends MediaSessionService {
     @Nullable
     private MediaSession session;
 
+    @Nullable
+    private PlayCounter counter;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -32,6 +35,7 @@ public class PlaybackService extends MediaSessionService {
             .setHandleAudioBecomingNoisy(true) // イヤホンが抜けたら一時停止
             .setWakeMode(C.WAKE_MODE_LOCAL) // 画面が消えても止まらないようにする
             .build();
+        counter = new PlayCounter(this, player);
 
         // 通知をタップしたらアプリを開く
         Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
@@ -64,6 +68,10 @@ public class PlaybackService extends MediaSessionService {
 
     @Override
     public void onDestroy() {
+        if (counter != null) {
+            counter.release();
+            counter = null;
+        }
         if (session != null) {
             session.getPlayer().release();
             session.release();

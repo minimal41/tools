@@ -56,9 +56,29 @@ public class MusicPlayerPlugin extends Plugin {
         }
     };
 
+    private final PlayCounter.Listener playListener = (id, count) -> {
+        JSObject e = new JSObject();
+        e.put("id", id);
+        e.put("count", count);
+        notifyListeners("played", e);
+    };
+
     @Override
     public void load() {
+        PlayCounter.listener = playListener;
         main.post(this::connect);
+    }
+
+    /** 曲ごとの再生回数 { counts: { id: 回数 } } */
+    @PluginMethod
+    public void getPlayCounts(PluginCall call) {
+        JSObject counts = new JSObject();
+        for (java.util.Map.Entry<String, Integer> e : PlayCounter.all(getContext()).entrySet()) {
+            counts.put(e.getKey(), (int) e.getValue());
+        }
+        JSObject r = new JSObject();
+        r.put("counts", counts);
+        call.resolve(r);
     }
 
     private void connect() {
@@ -288,6 +308,7 @@ public class MusicPlayerPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        if (PlayCounter.listener == playListener) PlayCounter.listener = null;
         // ページ側の接続だけ切る（サービスは再生中ならそのまま続く）
         main.post(() -> {
             if (controller != null) controller.removeListener(listener);
